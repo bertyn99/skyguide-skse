@@ -51,9 +51,12 @@ export function evaluatePriority(state: CollectedState): PriorityLevel {
 
   if (state.combatState === 1) {
     if (state.enemies.length > 0) {
-      const closestEnemy = state.enemies.reduce((min, e) =>
-        e.distance < min.distance ? e : min
-      , state.enemies[0]);
+      let closestEnemy = state.enemies[0];
+      for (let i = 1; i < state.enemies.length; i++) {
+        if (state.enemies[i].distance < closestEnemy.distance) {
+          closestEnemy = state.enemies[i];
+        }
+      }
 
       if (closestEnemy.distance < 500) {
         return "high";

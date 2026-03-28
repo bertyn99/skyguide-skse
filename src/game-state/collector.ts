@@ -1,5 +1,5 @@
-import { Game, Actor } from "skyrimPlatform";
-import type { PlayerState, EnemyState, CollectedState } from "./types";
+import { Game } from "skyrimPlatform";
+import type { PlayerState, EnemyState, CollectedState, EventType } from "./types";
 import { CONFIG, PLAYER_FORM_ID } from "../config";
 
 function getPlayerPosition(): { x: number; y: number; z: number } | null {
@@ -113,25 +113,16 @@ function collectEnemies(): EnemyState[] {
       name,
       distance,
       health: actor.getActorValue("health"),
-      level: actor.getLevel(),
-      animation: ""
+      level: actor.getLevel()
     });
   }
 
   return enemies;
 }
 
-export function collectPlayerStateExport(): PlayerState | null {
-  return collectPlayerState();
-}
-
-export function collectEnemiesExport(): EnemyState[] {
-  return collectEnemies();
-}
-
 export function collectFullState(
   playerAnimation: string = "",
-  eventType: string = "tick"
+  eventType: EventType = "tick"
 ): CollectedState | null {
   const player = collectPlayerState();
   if (!player) return null;

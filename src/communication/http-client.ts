@@ -46,6 +46,9 @@ class SkyGuideHttpClient {
         this.failureCount = 0;
         return true;
       } else {
+        if (CONFIG.debugMode) {
+          printConsole(`[SkyGuide] HTTP ${response.status}: request rejected by server`);
+        }
         this.lastFailureTime = Date.now();
         this.failureCount++;
         return false;
@@ -53,7 +56,7 @@ class SkyGuideHttpClient {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (CONFIG.debugMode) {
-        printConsole(`HTTP error: ${msg}`);
+        printConsole(`[SkyGuide] HTTP POST /api/game-state failed: ${msg}`);
       }
       this.lastFailureTime = Date.now();
       this.failureCount++;

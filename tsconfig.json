@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
+    "target": "es5",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
@@ -11,7 +11,15 @@
     "noEmit": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "baseUrl": ".",
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "skyrimPlatform": [
+        "node_modules/@skyrim-platform/skyrim-platform"
+      ]
+    },
   },
-  "include": ["src/**/*"]
+  "include": [
+    "src/**/*"
+  ]
 }

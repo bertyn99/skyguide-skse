@@ -1,5 +1,5 @@
 import { once, on, printConsole, Debug, hooks, findConsoleCommand } from "skyrimPlatform";
-import { collectFullState, collectPlayerStateExport, collectEnemiesExport } from "./game-state/collector";
+import { collectFullState } from "./game-state/collector";
 import { serializeState } from "./game-state/serializer";
 import { evaluatePriority, shouldSend } from "./arbitration/priority";
 import { sendGameState, isConnected } from "./communication/http-client";
@@ -15,9 +15,10 @@ function processAndSend(state: ReturnType<typeof collectFullState>): void {
 
   if (shouldSend(priority, state)) {
     const payload = serializeState(state, priority);
-    sendGameState(payload).catch(() => {
+    sendGameState(payload).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
       if (CONFIG.debugMode) {
-        printConsole("Failed to send game state");
+        printConsole(`[SkyGuide] Failed to send game state: ${msg}`);
       }
     });
 

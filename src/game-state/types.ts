@@ -1,3 +1,5 @@
+export type EventType = "tick" | "hit" | "combatState" | `combatState_${number}`;
+
 export interface Position {
   x: number;
   y: number;
@@ -21,7 +23,6 @@ export interface EnemyState {
   distance: number;
   health: number;
   level: number;
-  animation: string;
 }
 
 export interface CollectedState {
@@ -29,5 +30,5 @@ export interface CollectedState {
   combatState: number;
   enemies: EnemyState[];
   playerAnimation: string;
-  eventType: string;
+  eventType: EventType;
 }

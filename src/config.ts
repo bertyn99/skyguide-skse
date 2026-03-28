@@ -1,3 +1,7 @@
+// @env node
+// NOTE: For production, consider reading from Skyrim Platform settings:
+//   import { settings } from "skyrimPlatform";
+//   const debugMode = settings["skyguide"]?.["debugMode"] === "true";
 export const PLAYER_FORM_ID = 0x14;
 
 export const CONFIG = {
@@ -5,5 +9,5 @@ export const CONFIG = {
   tickInterval: 500,
   enemyScanRadius: 5000,
   maxEnemies: 10,
-  debugMode: true
-};
+  debugMode: false,
+} as const;
