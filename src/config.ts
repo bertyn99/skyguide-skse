@@ -10,4 +10,9 @@ export const CONFIG = {
   enemyScanRadius: 5000,
   maxEnemies: 10,
   debugMode: false,
+  pollingInterval: 1000,
+  pollingEndpoint: "/api/actions",
+  pollingMaxBackoff: 30000,
+  pollingEnabled: true,
+  maxPollingRetries: 5,
 } as const;
