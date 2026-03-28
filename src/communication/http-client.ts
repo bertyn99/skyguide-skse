@@ -1,4 +1,4 @@
-import { HttpClient } from "skyrimPlatform";
+import { HttpClient, printConsole } from "skyrimPlatform";
 import { CONFIG } from "../config";
 
 const MAX_SENDS_PER_SEC = 5;
@@ -17,6 +17,8 @@ class SkyGuideHttpClient {
   private client: HttpClient;
   private failureCount = 0;
   private maxFailures = 3;
+  private lastFailureTime = 0;
+  private cooldownMs = 10000;
 
   constructor(baseUrl: string) {
     this.client = new HttpClient(baseUrl);
@@ -27,7 +29,7 @@ class SkyGuideHttpClient {
 
     if (sendCount >= MAX_SENDS_PER_SEC) {
       if (CONFIG.debugMode) {
-        console.log("Rate limit exceeded");
+        printConsole("Rate limit exceeded");
       }
       return false;
     }
@@ -44,17 +46,28 @@ class SkyGuideHttpClient {
         this.failureCount = 0;
         return true;
       } else {
+        this.lastFailureTime = Date.now();
         this.failureCount++;
         return false;
       }
-    } catch {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (CONFIG.debugMode) {
+        printConsole(`HTTP error: ${msg}`);
+      }
+      this.lastFailureTime = Date.now();
       this.failureCount++;
       return false;
     }
   }
 
   isConnected(): boolean {
-    return this.failureCount < this.maxFailures;
+    if (this.failureCount < this.maxFailures) return true;
+    if (Date.now() - this.lastFailureTime > this.cooldownMs) {
+      this.failureCount = this.maxFailures - 1;
+      return true;
+    }
+    return false;
   }
 }
 

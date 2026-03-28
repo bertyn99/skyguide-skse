@@ -15,7 +15,11 @@ function processAndSend(state: ReturnType<typeof collectFullState>): void {
 
   if (shouldSend(priority, state)) {
     const payload = serializeState(state, priority);
-    sendGameState(payload);
+    sendGameState(payload).catch(() => {
+      if (CONFIG.debugMode) {
+        printConsole("Failed to send game state");
+      }
+    });
 
     if (CONFIG.debugMode) {
       printConsole(`Sent state: ${priority} priority`);
@@ -51,7 +55,7 @@ once("update", () => {
     },
     PLAYER_FORM_ID,
     PLAYER_FORM_ID + 1,
-    "*"
+    "*Attack*"
   );
 });
 
