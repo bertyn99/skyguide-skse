@@ -1,0 +1,79 @@
+{
+  "active_plan": "/home/bertyn/projets/shift-hackaton/skyguide-skse/.sisyphus/plans/accessibility-companion.md",
+  "started_at": "2026-03-28T22:34:35.793Z",
+  "session_ids": [
+    "ses_2c96a4517ffepg0AnbLGk5IDab",
+    "ses_2c968f1bdffe0poybuJk6qqKtF",
+    "ses_2c968f193ffeVSA76uixkkSSW3",
+    "ses_2c95f8caaffexWTCXPljJn3Hev",
+    "ses_2c95f4b81ffeThbKjbGvtxOTyr",
+    "ses_2c95d9d41ffeLFsztW5jhYvxZ1",
+    "ses_2c95d9cfbffeL1JFPYVinqN6Vs",
+    "ses_2c95d9c73ffe9a7kDIFWGFivrP",
+    "ses_2c95d9cb8ffe2fe77zcHTvt0zH",
+    "ses_2c95d9b17ffeQbxcMpXnFlWRxr",
+    "ses_2c95d9b76ffeBO74XJdkCUxlxx",
+    "ses_2c95d9c32ffeOl5qy0pc2oXmHO",
+    "ses_2c95b19a3ffe2K8T8KJ2lrRWf5",
+    "ses_2c95b1951ffec50FnfqusigoKS",
+    "ses_2c957de54ffeKNV6rjFxgaxSsd",
+    "ses_2c957de00ffeAj2wYSl7T9N988",
+    "ses_2c957de9bffecEDYAbGmMicnyV",
+    "ses_2c9505fdfffeK30u7of77QjfDq",
+    "ses_2c94e9ef8ffefWchwaIcgZd6IZ",
+    "ses_2c94aa415ffeZmJRQ1bOeJRRlA",
+    "ses_2c94aa387ffe8xzipKbK1plW6h",
+    "ses_2c94aa301ffe5RVSC4OYEnn43H",
+    "ses_2c92c3566ffev029DYA56fGoJN",
+    "ses_2c92c3531ffetn7KS8t6SEu6UY"
+  ],
+  "plan_name": "accessibility-companion",
+  "agent": "atlas",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Expand type definitions",
+      "session_id": "ses_2c95f4b81ffeThbKjbGvtxOTyr",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-low",
+      "updated_at": "2026-03-28T22:47:33.606Z"
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "Player collector (heading, equipment, combat, movement state)",
+      "session_id": "ses_2c95d9d41ffeLFsztW5jhYvxZ1",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-03-28T22:51:06.404Z"
+    },
+    "todo:11": {
+      "task_key": "todo:11",
+      "task_label": "11",
+      "task_title": "Action type definitions and parser",
+      "session_id": "ses_2c957de9bffecEDYAbGmMicnyV",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-low",
+      "updated_at": "2026-03-28T22:55:26.281Z"
+    },
+    "todo:14": {
+      "task_key": "todo:14",
+      "task_label": "14",
+      "task_title": "Expand outbound serializer",
+      "session_id": "ses_2c9505fdfffeK30u7of77QjfDq",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-03-28T23:04:12.603Z"
+    },
+    "todo:15": {
+      "task_key": "todo:15",
+      "task_label": "15",
+      "task_title": "Update main loop with collectors, polling, and events",
+      "session_id": "ses_2c94e9ef8ffefWchwaIcgZd6IZ",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-03-28T23:08:01.157Z"
+    }
+  }
+}
