@@ -1,6 +1,9 @@
 {
   "compilerOptions": {
     "target": "es5",
+    "lib": [
+      "es2015"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
@@ -17,7 +20,7 @@
       "skyrimPlatform": [
         "node_modules/@skyrim-platform/skyrim-platform"
       ]
-    },
+    }
   },
   "include": [
     "src/**/*"
