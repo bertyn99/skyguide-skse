@@ -4,12 +4,13 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-   "webpack": "webpack",
-    "webpack:deploy": "set DEPLOY_PLUGIN=true && npm run webpack",
-    "webpack:deploy:watch": "set DEPLOY_PLUGIN=true && npm run webpack -- --watch",
+    "webpack": "webpack",
+    "webpack:deploy": "set DEPLOY_PLUGIN=true && pnpm run webpack",
+    "webpack:deploy:watch": "set DEPLOY_PLUGIN=true && pnpm run webpack -- --watch",
     "deploy": "cp dist/skyguide.js \"/mnt/c/Program Files (x86)/Steam/steamapps/common/Skyrim Special Edition/Data/Platform/Plugins/skyguide.js\"",
     "check:runtime": "node scripts/check-skyrim-runtime.js",
     "verify:skyrim": "pnpm build && pnpm check:runtime",
+    "dev": "pnpm i && pnpm run webpack:deploy:watch",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "format": "oxlint --fix"
@@ -19,11 +20,16 @@
   },
   "devDependencies": {
     "oxlint": "^0.16.0",
-   "ts-loader": "^9.2.6",
+    "ts-loader": "^9.2.6",
+    "ts-node": "^10.9.2",
     "tsc": "^2.0.3",
     "typescript": "^4.5.4",
     "webpack": "^5.104.1",
     "webpack-cli": "^4.9.1",
     "webpack-shell-plugin-next": "^2.2.2"
-  }
+  },
+  "keywords": [
+    "skyrim",
+    "skryim platform"
+  ]
 }

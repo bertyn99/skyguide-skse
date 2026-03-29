@@ -1,8 +1,11 @@
-const fs = require('fs');
-const path = require('path');
-const packageInfo = require('./package.json')
-const WebpackShellPluginNext = require('webpack-shell-plugin-next');
-const { getFips } = require('crypto');
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import WebpackShellPluginNext from 'webpack-shell-plugin-next';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const packageInfo = JSON.parse(fs.readFileSync(path.resolve(__dirname, './package.json'), 'utf8'));
 
 // Configure webpack output file folder and file name
 const outputFolder = path.resolve(__dirname, './build')
@@ -16,20 +19,22 @@ const entryPoint = './src/index.ts'
 // If you run webpack with the DEPLOY_PLUGIN environment variable configured to true, then it will
 // additionally 'deploy' the plugin to the configured Skyrim directory (via skyrim.json or SKYRIMPATH)
 // If no existing folder path is found to the Skyrim folder, an error is displayed and the webpack is canceled. 
-let plugins = []
+let plugins: any[] = []
 if (process.env['DEPLOY_PLUGIN']?.includes('true')) {
     // Get the path to the Skyrim folder from skyrim.json and the SKYRIMPATH environment variable, if configured.
     let skyrimConfig
-    if (fs.existsSync('./skyrim.json')) skyrimConfig = require('./skyrim.json')
+    if (fs.existsSync('./skyrim.json')) {
+        skyrimConfig = JSON.parse(fs.readFileSync('./skyrim.json', 'utf8'))
+    }
     const skyrimPathFromConfig = skyrimConfig && skyrimConfig.skyrimFolder
     const skyrimPathFromEnvironment = process.env['SKYRIMPATH']
 
     // If the path set in skyrim.json exists on the file system, use it.
     // Otherwise, if the path set in the SKYRIMPATH environment variable exists on the file system, us it.
     let skyrimFolder
-    if (fs.existsSync(skyrimPathFromConfig)) skyrimFolder = skyrimPathFromConfig
+    if (skyrimPathFromConfig && fs.existsSync(skyrimPathFromConfig)) skyrimFolder = skyrimPathFromConfig
     if (! skyrimFolder)
-        if (fs.existsSync(skyrimPathFromEnvironment)) skyrimFolder = skyrimPathFromEnvironment
+        if (skyrimPathFromEnvironment && fs.existsSync(skyrimPathFromEnvironment)) skyrimFolder = skyrimPathFromEnvironment
     if (! skyrimFolder) {
         console.error('Please set valid path to your Skyrim folder in skyrim.json (or SKYRIMPATH environment variable)') 
         process.exit(1)
@@ -40,7 +45,7 @@ if (process.env['DEPLOY_PLUGIN']?.includes('true')) {
     fs.mkdirSync(skyrimPlatformPluginsDirectory, { recursive: true })
     const pluginDestinationPath = path.join(skyrimPlatformPluginsDirectory, outputFilename)
     let copyCommand = `xcopy "${outputFile}" "${skyrimPlatformPluginsDirectory}" /I /Y && echo "Copied ${outputFilename} to ${pluginDestinationPath}"`
-    if (! process.platform == 'win32')
+    if (process.platform !== 'win32')
         copyCommand = `cp "${outputFile}" "${skyrimPlatformPluginsDirectory}" && echo "Copied ${outputFilename} to ${pluginDestinationPath}"`
     plugins.push(new WebpackShellPluginNext({ onAfterDone: { scripts: [copyCommand] } }))
 
@@ -52,15 +57,15 @@ if (process.env['DEPLOY_PLUGIN']?.includes('true')) {
     const localPlatformFolder = path.join('.', 'Platform')
     const localPluginsFolder = path.join(localPlatformFolder, 'Plugins')
     const localPluginFiles = path.join(localPluginsFolder, '*.js')
-    fs.rmdirSync(localPluginsFolder, { recursive: true, force: true })
+    fs.rmSync(localPluginsFolder, { recursive: true, force: true })
     fs.mkdirSync(localPluginsFolder, { recursive: true })
     let zipCommand = `xcopy "${outputFile}" "${localPluginsFolder}" && npm run zip:cli -- "${zipFile}" "${localPluginFiles}" && RMDIR /S /Q "${localPluginsFolder}"`
-    if (! process.platform == 'win32')
+    if (process.platform !== 'win32')
         zipCommand = `cp "${outputFile}" "${localPluginsFolder}" && npm run zip:cli -- "${zipFile}" "${localPluginFiles}" && rm -rf "${localPlatformFolder}"`
     plugins.push(new WebpackShellPluginNext({ onBuildEnd: { scripts: [zipCommand] } }))
 }
 
-module.exports = {
+export default {
     plugins,
     mode: 'development',
     devtool: 'inline-source-map',
