@@ -1,4 +1,4 @@
-import { Debug, DxScanCode, Game, Input, Ui, printConsole } from "../skyrimPlatform";
+import { Debug, DxScanCode, Game, Input, Ui, printConsole } from "src/skyrimPlatform";
 import { CONFIG, PLAYER_FORM_ID } from "../config";
 import type { ActionCommand } from "./types";
 
@@ -133,12 +133,14 @@ function releaseBlockAfterDelay(delayMs: number): void {
 
   if (typeof runtimeTimers.setTimeout === "function") {
     runtimeTimers.setTimeout(() => {
-      Input.releaseKey(42 as DxScanCode);
+      // @ts-ignore
+      Input.releaseKey(DxScanCode.LeftShift);
     }, delayMs);
     return;
   }
 
-  Input.releaseKey(42 as DxScanCode);
+  // @ts-ignore
+  Input.releaseKey(DxScanCode.LeftShift); 
 }
 
 export function executeAction(action: ActionCommand): boolean {
@@ -241,12 +243,14 @@ export function executeAction(action: ActionCommand): boolean {
 
     case "attack": {
       return executeSafely(action.type, () => {
+        // @ts-ignore
         Input.tapKey(57 as DxScanCode);
       });
     }
 
     case "block": {
       return executeSafely(action.type, () => {
+        // @ts-ignore
         Input.holdKey(42 as DxScanCode);
         releaseBlockAfterDelay(500);
       });

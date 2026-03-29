@@ -22,7 +22,7 @@ export const {
   DxScanCode,
   Utility,
   Weather,
-} = skyrimPlatform
+} = skyrimPlatform;
 
 export type * from '@skyrim-platform/skyrim-platform'
 

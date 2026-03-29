@@ -4,11 +4,11 @@ import { parseAction } from "./parser";
 import { executeAction } from "./executor";
 
 const INITIAL_BACKOFF_MS = 1000;
-let pollingClient: HttpClient | null = null;
+let pollingClient: typeof HttpClient | null = null;
 let backoffMs = INITIAL_BACKOFF_MS;
 let consecutiveFailures = 0;
 let pollingActive = false;
-let pollTimerId: ReturnType<typeof setTimeout> | null = null;
+let pollTimerId: number | null = null;
 
 function logDebug(message: string): void {
   if (CONFIG.debugMode) {
