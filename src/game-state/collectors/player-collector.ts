@@ -1,4 +1,4 @@
-import { Game } from "../../skyrimPlatform";
+import { Game, ObjectReference } from "../../skyrimPlatform";
 import type {
   PlayerFullState,
   HeadingState,
@@ -27,7 +27,7 @@ function collectHeading(): HeadingState {
     angleX: safeNumber(player.getAngleX()),
     angleY: safeNumber(player.getAngleY()),
     angleZ: safeNumber(player.getAngleZ()),
-    headingAngle: safeNumber(player.getHeadingAngle()),
+    headingAngle: safeNumber(player.getHeadingAngle(null)),
   };
 }
 

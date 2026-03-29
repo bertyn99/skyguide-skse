@@ -1,13 +1,14 @@
 import { DxScanCode, Input } from "../../skyrimPlatform";
 import type { InputState } from "../types";
+import * as SkT from '@skyrim-platform/skyrim-platform'
 
-const MOVE_FORWARD = 17 as DxScanCode;
-const MOVE_LEFT = 30 as DxScanCode;
-const MOVE_BACKWARD = 31 as DxScanCode;
-const MOVE_RIGHT = 32 as DxScanCode;
-const SPRINT = 42 as DxScanCode;
-const CROUCH = 29 as DxScanCode;
-const JUMP_OR_ACTIVATE = 57 as DxScanCode;
+const MOVE_FORWARD = 17 as SkT.DxScanCode;
+const MOVE_LEFT = 30 as SkT.DxScanCode;
+const MOVE_BACKWARD = 31 as SkT.DxScanCode;
+const MOVE_RIGHT = 32 as SkT.DxScanCode;
+const SPRINT = 42 as SkT.DxScanCode;
+const CROUCH = 29 as SkT.DxScanCode;
+const JUMP_OR_ACTIVATE = 57 as SkT.DxScanCode;
 
 export function collectInputState(): InputState {
   try {

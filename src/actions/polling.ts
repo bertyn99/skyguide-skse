@@ -1,64 +1,63 @@
-import { HttpClient, printConsole, Ui, once } from "../skyrimPlatform";
+import * as SkT from '@skyrim-platform/skyrim-platform'
 import { CONFIG } from "../config";
 import { parseAction } from "./parser";
 import { executeAction } from "./executor";
 
 const INITIAL_BACKOFF_MS = 1000;
-let pollingClient: typeof HttpClient | null = null;
+let pollingClient: SkT.HttpClient | null = null;
 let backoffMs = INITIAL_BACKOFF_MS;
 let consecutiveFailures = 0;
 let pollingActive = false;
-let pollTimerId: number | null = null;
+let pollTimerId: NodeJS.Timeout | null = null;
 
 function logDebug(message: string): void {
   if (CONFIG.debugMode) {
-    printConsole(`[SkyGuide] ${message}`);
+    SkT.printConsole(`[SkyGuide] ${message}`);
   }
 }
 
-function pollForActions(): void {
+async function pollForActions(): Promise<void> {
   if (!pollingClient || !pollingActive) return;
 
-  if (Ui.isMenuOpen("Loading Menu")) {
+  if (SkT.Ui.isMenuOpen("Loading Menu")) {
     logDebug("Loading screen open — skipping action poll");
     scheduleNextPoll();
     return;
   }
 
-  pollingClient
-    .get(CONFIG.pollingEndpoint)
-    .then((response) => {
-      if (response.status === 200) {
-        consecutiveFailures = 0;
-        backoffMs = INITIAL_BACKOFF_MS;
+  try {
+    const response = await pollingClient.get(CONFIG.pollingEndpoint);
 
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(response.body) as unknown;
-        } catch {
-          logDebug("Failed to parse action response body as JSON");
-          return;
-        }
+    if (response.status === 200) {
+      consecutiveFailures = 0;
+      backoffMs = INITIAL_BACKOFF_MS;
 
-        const actions: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
-
-        for (const raw of actions) {
-          const action = parseAction(raw);
-          if (action !== null) {
-            executeAction(action);
-          }
-        }
-      } else {
-        handleFailure(`HTTP ${response.status}`);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(response.body) as unknown;
+      } catch {
+        logDebug("Failed to parse action response body as JSON");
+        scheduleNextPoll();
+        return;
       }
-    })
-    .catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      handleFailure(msg);
-    })
-    .finally(() => {
-      scheduleNextPoll();
-    });
+
+      const actions: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
+
+      for (const raw of actions) {
+        const action = parseAction(raw);
+        if (action !== null) {
+          executeAction(action);
+        }
+      }
+    } else {
+      handleFailure(`HTTP ${response.status}`);
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    handleFailure(msg);
+  }
+
+  scheduleNextPoll();
 }
 
 function handleFailure(reason: string): void {
@@ -94,13 +93,13 @@ export function startPolling(): void {
     return;
   }
 
-  pollingClient = new HttpClient(CONFIG.serverUrl);
+  pollingClient = new SkT.HttpClient(CONFIG.serverUrl);
   pollingActive = true;
   backoffMs = INITIAL_BACKOFF_MS;
   consecutiveFailures = 0;
 
   logDebug("Starting action polling");
-  once("update", () => {
+  SkT.once("update", () => {
     pollForActions();
   });
 }

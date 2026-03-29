@@ -60,9 +60,12 @@ function processAndSend(eventType: EventType, priority: PriorityLevel, animation
   }
 }
 
-once("update", () => {
+let isLoaded = false;
+function init() {
+  if (isLoaded) return;
+
   printConsole("SkyGuide plugin loaded!");
-  Debug.notification("SkyGuide is active");
+  // Debug.notification("SkyGuide is active");
 
   registerAllEvents();
   eventsRegistered = true;
@@ -95,8 +98,14 @@ once("update", () => {
     },
     PLAYER_FORM_ID,
     PLAYER_FORM_ID + 1,
-    "*Attack*"
+    "Attack*"
   );
+
+  isLoaded = true;
+}
+
+once("update", () => {
+  init();
 });
 
 const skyguideCommand = findConsoleCommand("skyguide");
@@ -115,6 +124,7 @@ if (skyguideCommand) {
 }
 
 on("tick", () => {
+  init();
   if (!isConnected()) {
     return;
   }

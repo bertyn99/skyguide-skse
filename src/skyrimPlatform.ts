@@ -15,6 +15,7 @@ export const {
   Debug,
   hooks,
   findConsoleCommand,
+  ObjectReference,
   HttpClient,
   Ui,
   Game,
