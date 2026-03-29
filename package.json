@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "tsdown --watch",
     "build": "tsdown",
+    "deploy": "cp dist/skyguide.js \"/mnt/c/Program Files (x86)/Steam/steamapps/common/Skyrim Special Edition/Data/Platform/Plugins/skyguide.js\"",
+    "check:runtime": "node scripts/check-skyrim-runtime.js",
+    "verify:skyrim": "pnpm build && pnpm check:runtime",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "format": "oxlint --fix"

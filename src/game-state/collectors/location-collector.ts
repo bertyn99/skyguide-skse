@@ -1,4 +1,4 @@
-import { Game } from "skyrimPlatform";
+import { Game } from "../../skyrimPlatform";
 import type { LocationState } from "../types";
 
 export function collectLocationState(): LocationState {

@@ -1,5 +1,5 @@
-import { Game } from "skyrimPlatform";
-import type { Quest } from "skyrimPlatform";
+import { Game } from "../../skyrimPlatform";
+import type { Quest } from "../../skyrimPlatform";
 import type { QuestState } from "../types";
 
 export function collectQuestState(): QuestState | null {

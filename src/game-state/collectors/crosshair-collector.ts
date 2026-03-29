@@ -1,4 +1,4 @@
-import { Game } from "skyrimPlatform";
+import { Game } from "../../skyrimPlatform";
 import { PLAYER_FORM_ID } from "../../config";
 import { CrosshairTarget } from "../types";
 

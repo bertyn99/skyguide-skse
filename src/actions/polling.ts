@@ -1,4 +1,4 @@
-import { HttpClient, printConsole, Ui, once } from "skyrimPlatform";
+import { HttpClient, printConsole, Ui, once } from "../skyrimPlatform";
 import { CONFIG } from "../config";
 import { parseAction } from "./parser";
 import { executeAction } from "./executor";

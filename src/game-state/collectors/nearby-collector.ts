@@ -1,4 +1,4 @@
-import { Game } from "skyrimPlatform";
+import { Game } from "../../skyrimPlatform";
 import { CONFIG, PLAYER_FORM_ID } from "../../config";
 import type { NearbyNpcState } from "../types";
 

@@ -24,7 +24,7 @@ import {
   type SkillIncreaseEvent,
   type SleepStartEvent,
   type SleepStopEvent
-} from "skyrimPlatform";
+} from "./skyrimPlatform";
 import { CONFIG } from "./config";
 
 type EventName =

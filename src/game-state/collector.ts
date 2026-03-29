@@ -1,4 +1,4 @@
-import { Game } from "skyrimPlatform";
+import { Game } from "../skyrimPlatform";
 import type { PlayerState, EnemyState, CollectedState, EventType } from "./types";
 import { CONFIG, PLAYER_FORM_ID } from "../config";
 

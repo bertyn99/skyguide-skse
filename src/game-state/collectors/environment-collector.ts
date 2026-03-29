@@ -1,4 +1,4 @@
-import { Game, Utility, Weather } from "skyrimPlatform";
+import { Game, Utility, Weather } from "../../skyrimPlatform";
 import type { EnvironmentState } from "../types";
 
 export function collectEnvironmentState(): EnvironmentState {

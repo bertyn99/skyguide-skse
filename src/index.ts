@@ -1,4 +1,4 @@
-import { once, on, printConsole, Debug, hooks, findConsoleCommand } from "skyrimPlatform";
+import { once, on, printConsole, Debug, hooks, findConsoleCommand } from "./skyrimPlatform";
 import { registerAllEvents } from "./events";
 import { startPolling } from "./actions/polling";
 import { shouldSend } from "./arbitration/priority";

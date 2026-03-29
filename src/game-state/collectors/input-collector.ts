@@ -1,4 +1,4 @@
-import { DxScanCode, Input } from "skyrimPlatform";
+import { DxScanCode, Input } from "../../skyrimPlatform";
 import type { InputState } from "../types";
 
 const MOVE_FORWARD = 17 as DxScanCode;

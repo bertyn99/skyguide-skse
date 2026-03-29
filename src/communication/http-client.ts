@@ -1,4 +1,4 @@
-import { HttpClient, printConsole } from "skyrimPlatform";
+import { HttpClient, printConsole } from "../skyrimPlatform";
 import { CONFIG } from "../config";
 
 const MAX_SENDS_PER_SEC = 5;

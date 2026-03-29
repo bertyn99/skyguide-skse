@@ -1,4 +1,4 @@
-import { Debug, DxScanCode, Game, Input, Ui, printConsole } from "skyrimPlatform";
+import { Debug, DxScanCode, Game, Input, Ui, printConsole } from "../skyrimPlatform";
 import { CONFIG, PLAYER_FORM_ID } from "../config";
 import type { ActionCommand } from "./types";
 
