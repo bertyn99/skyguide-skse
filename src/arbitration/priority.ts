@@ -78,6 +78,7 @@ export function evaluatePriority(state: CollectedState): PriorityLevel {
 }
 
 export function shouldSend(priority: PriorityLevel, state: CollectedState): boolean {
+  void state;
   if (priority === "suppressed") {
     return false;
   }
@@ -90,9 +91,12 @@ export function shouldSend(priority: PriorityLevel, state: CollectedState): bool
     return false;
   }
 
-  // Only update state when we're actually going to send
+  // Rate-limit is attempt-based to avoid hammering transport on repeated failures.
   lastSendTimes[priority] = now;
-  lastState = state;
 
   return true;
+}
+
+export function recordSentState(state: CollectedState): void {
+  lastState = state;
 }

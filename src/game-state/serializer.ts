@@ -33,7 +33,10 @@ type FullGameStatePayload = Omit<GameStatePayload, "data"> & {
   data: FullCollectedState;
 };
 
-export function serializeFullState(eventType: EventType = "tick"): string | null {
+export function serializeFullState(
+  eventType: EventType = "tick",
+  priority: PriorityLevel = "medium"
+): string | null {
   let player: FullCollectedState["player"] = null;
   let nearbyNpcs: FullCollectedState["nearbyNpcs"] = [];
   let crosshairTarget: FullCollectedState["crosshairTarget"] = null;
@@ -107,7 +110,7 @@ export function serializeFullState(eventType: EventType = "tick"): string | null
 
   const payload: FullGameStatePayload = {
     protocolVersion: 1,
-    priority: "medium",
+    priority,
     source: "skyguide",
     data: fullState,
     timestamp: Date.now()

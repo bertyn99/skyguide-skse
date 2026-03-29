@@ -36,6 +36,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 export function parseAction(raw: unknown): ActionCommand | null {
   if (!isRecord(raw)) {
     return null;
@@ -50,7 +58,7 @@ export function parseAction(raw: unknown): ActionCommand | null {
   switch (actionType) {
     case "move": {
       const { x, y, z } = raw;
-      if (typeof x !== "number" || typeof y !== "number" || typeof z !== "number") {
+      if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isFiniteNumber(z)) {
         return null;
       }
       return { type: "move", x, y, z };
@@ -58,7 +66,7 @@ export function parseAction(raw: unknown): ActionCommand | null {
 
     case "face": {
       const { angle } = raw;
-      if (typeof angle !== "number") {
+      if (!isFiniteNumber(angle)) {
         return null;
       }
       return { type: "face", angle };
@@ -74,7 +82,7 @@ export function parseAction(raw: unknown): ActionCommand | null {
 
     case "fastTravel": {
       const { location } = raw;
-      if (typeof location !== "string") {
+      if (!isNonEmptyString(location)) {
         return null;
       }
       return { type: "fastTravel", location };
@@ -83,7 +91,7 @@ export function parseAction(raw: unknown): ActionCommand | null {
     case "equip":
     case "useItem": {
       const { itemName } = raw;
-      if (typeof itemName !== "string") {
+      if (!isNonEmptyString(itemName)) {
         return null;
       }
       return { type: actionType, itemName };
@@ -91,7 +99,7 @@ export function parseAction(raw: unknown): ActionCommand | null {
 
     case "heal": {
       const { amount } = raw;
-      if (typeof amount !== "number") {
+      if (!isFiniteNumber(amount) || amount <= 0) {
         return null;
       }
       return { type: "heal", amount };
@@ -99,7 +107,7 @@ export function parseAction(raw: unknown): ActionCommand | null {
 
     case "saveGame": {
       const { name } = raw;
-      if (typeof name !== "string") {
+      if (!isNonEmptyString(name)) {
         return null;
       }
       return { type: "saveGame", name };
@@ -107,7 +115,7 @@ export function parseAction(raw: unknown): ActionCommand | null {
 
     case "notification": {
       const { message } = raw;
-      if (typeof message !== "string") {
+      if (!isNonEmptyString(message)) {
         return null;
       }
       return { type: "notification", message };

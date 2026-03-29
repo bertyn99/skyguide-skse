@@ -3,12 +3,12 @@ import { CONFIG } from "../config";
 import { parseAction } from "./parser";
 import { executeAction } from "./executor";
 
-const INITIAL_BACKOFF_MS = 1000;
+const INITIAL_BACKOFF_MS: number = CONFIG.pollingInterval;
 let pollingClient: SkT.HttpClient | null = null;
 let backoffMs = INITIAL_BACKOFF_MS;
 let consecutiveFailures = 0;
 let pollingActive = false;
-let pollTimerId: NodeJS.Timeout | null = null;
+let pollTimerId: ReturnType<typeof setTimeout> | null = null;
 
 function logDebug(message: string): void {
   if (CONFIG.debugMode) {
