@@ -1,8 +1,8 @@
-import { once, on, printConsole, hooks, findConsoleCommand, Game } from "./skyrimPlatform";
+import { once, on, printConsole, hooks, findConsoleCommand } from "./skyrimPlatform";
 import { registerAllEvents } from "./events";
 import { startPolling } from "./actions/polling";
 import { evaluatePriority, shouldSend, recordSentState } from "./arbitration/priority";
-import { serializeFullState } from "./game-state/serializer";
+import { serializeState } from "./game-state/serializer";
 import { collectFullState } from "./game-state/collector";
 import type { EventType } from "./game-state/types";
 import { sendGameState, isConnected } from "./communication/http-client";
@@ -13,12 +13,8 @@ let playerAnimation = "";
 let eventsRegistered = false;
 let pollingStarted = false;
 let lastCombatState = 0;
-let lastMovementLogTime = 0;
-let lastLoggedPosition: { x: number; y: number; z: number } | null = null;
 
 const COLLECTORS_COUNT = 8;
-const MOVEMENT_LOG_MIN_DISTANCE = 100;
-const MOVEMENT_LOG_INTERVAL_MS = 1000;
 
 /**
  * findConsoleCommand only resolves built-in SCRIPT_FUNCTION entries; it cannot invent new commands.
@@ -72,13 +68,7 @@ function processAndSend(eventType: EventType, animation = ""): void {
     return;
   }
 
-  const payload = serializeFullState(eventType, priority);
-  if (!payload) {
-    if (CONFIG.debugMode) {
-      printConsole("[SkyGuide] Failed to serialize full state payload");
-    }
-    return;
-  }
+  const payload = serializeState(state, priority);
 
   sendGameState(payload)
     .then((sent) => {
@@ -106,57 +96,6 @@ function safeProcessAndSend(eventType: EventType, animation = ""): void {
       printConsole(`[SkyGuide] processAndSend failed (${eventType}): ${msg}`);
     }
   }
-}
-
-function distance3D(
-  from: { x: number; y: number; z: number },
-  to: { x: number; y: number; z: number }
-): number {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const dz = to.z - from.z;
-  return Math.sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-function logPlayerWalking(now: number): void {
-  const player = Game.getPlayer();
-  if (!player || player.isDead()) {
-    lastLoggedPosition = null;
-    return;
-  }
-
-  const currentPosition = {
-    x: player.getPositionX(),
-    y: player.getPositionY(),
-    z: player.getPositionZ()
-  };
-
-  if (!lastLoggedPosition) {
-    lastLoggedPosition = currentPosition;
-    return;
-  }
-
-  const walkedDistance = distance3D(lastLoggedPosition, currentPosition);
-  if (walkedDistance < MOVEMENT_LOG_MIN_DISTANCE) {
-    return;
-  }
-
-  if (now - lastMovementLogTime < MOVEMENT_LOG_INTERVAL_MS) {
-    return;
-  }
-
-  const movementKind = player.isSprinting()
-    ? "sprinting"
-    : player.isRunning()
-      ? "running"
-      : "walking";
-
-  printConsole(
-    `[SkyGuide] Player ${movementKind}: x=${currentPosition.x.toFixed(0)} y=${currentPosition.y.toFixed(0)} z=${currentPosition.z.toFixed(0)} (moved ${walkedDistance.toFixed(0)})`
-  );
-
-  lastLoggedPosition = currentPosition;
-  lastMovementLogTime = now;
 }
 
 let isLoaded = false;
@@ -220,13 +159,11 @@ once("update", () => {
 });
 
 on("update", () => {
-  const now = Date.now();
-  logPlayerWalking(now);
-
   if (!isConnected()) {
     return;
   }
 
+  const now = Date.now();
   if (now - lastTickTime < CONFIG.tickInterval) {
     return;
   }
