@@ -24,7 +24,7 @@ class SkyGuideHttpClient {
     this.client = new HttpClient(baseUrl);
   }
 
-  async sendGameState(payload: string): Promise<boolean> {
+  sendGameState(payload: string): Promise<boolean> {
     resetRateLimit();
 
     if (sendCount >= MAX_SENDS_PER_SEC) {
@@ -34,34 +34,35 @@ class SkyGuideHttpClient {
       return false;
     }
 
-    try {
-      const response = await this.client.post("/api/game-state", {
+    return this.client
+      .post("/api/game-state", {
         body: payload,
         contentType: "application/json"
-      });
+      })
+      .then((response) => {
+        sendCount++;
 
-      sendCount++;
-
-      if (response.status >= 200 && response.status < 300) {
-        this.failureCount = 0;
-        return true;
-      } else {
+        if (response.status >= 200 && response.status < 300) {
+          this.failureCount = 0;
+          return true;
+        } else {
+          if (CONFIG.debugMode) {
+            printConsole(`[SkyGuide] HTTP ${response.status}: request rejected by server`);
+          }
+          this.lastFailureTime = Date.now();
+          this.failureCount++;
+          return false;
+        }
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
         if (CONFIG.debugMode) {
-          printConsole(`[SkyGuide] HTTP ${response.status}: request rejected by server`);
+          printConsole(`[SkyGuide] HTTP POST /api/game-state failed: ${msg}`);
         }
         this.lastFailureTime = Date.now();
         this.failureCount++;
         return false;
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (CONFIG.debugMode) {
-        printConsole(`[SkyGuide] HTTP POST /api/game-state failed: ${msg}`);
-      }
-      this.lastFailureTime = Date.now();
-      this.failureCount++;
-      return false;
-    }
+      });
   }
 
   isConnected(): boolean {
@@ -76,7 +77,7 @@ class SkyGuideHttpClient {
 
 export const httpClient = new SkyGuideHttpClient(CONFIG.serverUrl);
 
-export async function sendGameState(payload: string): Promise<boolean> {
+export function sendGameState(payload: string): Promise<boolean> {
   return httpClient.sendGameState(payload);
 }
 

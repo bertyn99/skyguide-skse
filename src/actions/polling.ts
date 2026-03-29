@@ -16,7 +16,7 @@ function logDebug(message: string): void {
   }
 }
 
-async function pollForActions(): Promise<void> {
+function pollForActions(): void {
   if (!pollingClient || !pollingActive) return;
 
   if (Ui.isMenuOpen("Loading Menu")) {
@@ -25,39 +25,40 @@ async function pollForActions(): Promise<void> {
     return;
   }
 
-  try {
-    const response = await pollingClient.get(CONFIG.pollingEndpoint);
+  pollingClient
+    .get(CONFIG.pollingEndpoint)
+    .then((response) => {
+      if (response.status === 200) {
+        consecutiveFailures = 0;
+        backoffMs = INITIAL_BACKOFF_MS;
 
-    if (response.status === 200) {
-      consecutiveFailures = 0;
-      backoffMs = INITIAL_BACKOFF_MS;
-
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(response.body) as unknown;
-      } catch {
-        logDebug("Failed to parse action response body as JSON");
-        scheduleNextPoll();
-        return;
-      }
-
-      const actions: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
-
-      for (const raw of actions) {
-        const action = parseAction(raw);
-        if (action !== null) {
-          executeAction(action);
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(response.body) as unknown;
+        } catch {
+          logDebug("Failed to parse action response body as JSON");
+          return;
         }
-      }
-    } else {
-      handleFailure(`HTTP ${response.status}`);
-    }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    handleFailure(msg);
-  }
 
-  scheduleNextPoll();
+        const actions: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
+
+        for (const raw of actions) {
+          const action = parseAction(raw);
+          if (action !== null) {
+            executeAction(action);
+          }
+        }
+      } else {
+        handleFailure(`HTTP ${response.status}`);
+      }
+    })
+    .catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      handleFailure(msg);
+    })
+    .finally(() => {
+      scheduleNextPoll();
+    });
 }
 
 function handleFailure(reason: string): void {

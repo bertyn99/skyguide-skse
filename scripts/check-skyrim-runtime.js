@@ -153,7 +153,7 @@ const forbiddenPatterns = [
   },
   {
     label: 'Nullish coalescing (??)',
-    regex: /\?\?(?!\=)/,
+    regex: /\?\?(?!=)/,
     reason: 'Older Skyrim Platform V8 builds may fail on nullish coalescing.',
   },
   {
