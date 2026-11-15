@@ -44,12 +44,55 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+/**
+ * The server outbox wraps parameters as `{ type, params, id, source }`.
+ * Flatten so both that shape and the legacy flat `{ type, amount, ... }` parse.
+ */
+function flattenOutboxShape(raw: Record<string, unknown>): Record<string, unknown> {
+  const params = raw.params;
+  if (!isRecord(params)) {
+    return raw;
+  }
+  return { ...params, type: raw.type, id: raw.id };
+}
+
+const TYPE_ALIASES: Record<string, ActionType> = {
+  open_door: "activate",
+  openDoor: "activate",
+  use_potion: "useItem",
+  usePotion: "useItem",
+  draw_weapon: "drawWeapon",
+  sheathe_weapon: "sheatheWeapon",
+};
+
 export function parseAction(raw: unknown): ActionCommand | null {
   if (!isRecord(raw)) {
     return null;
   }
 
-  const actionType = raw.type;
+  const flat = flattenOutboxShape(raw);
+  const rawType = flat.type;
+  const aliased =
+    typeof rawType === "string" && rawType in TYPE_ALIASES
+      ? TYPE_ALIASES[rawType]
+      : rawType;
+  const actionType = aliased;
+
+  // Alias open_door → activate nearestDoor when no target was given.
+  if (
+    actionType === "activate" &&
+    !isActivateTarget(flat.target) &&
+    (rawType === "open_door" || rawType === "openDoor")
+  ) {
+    flat.target = "nearestDoor";
+  }
+  if (
+    (actionType === "useItem" || actionType === "equip") &&
+    !isNonEmptyString(flat.itemName) &&
+    isNonEmptyString(flat.name)
+  ) {
+    flat.itemName = flat.name;
+  }
 
   if (typeof actionType !== "string" || !ACTION_TYPES.has(actionType as ActionType)) {
     return null;
@@ -57,7 +100,7 @@ export function parseAction(raw: unknown): ActionCommand | null {
 
   switch (actionType) {
     case "move": {
-      const { x, y, z } = raw;
+      const { x, y, z } = flat;
       if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isFiniteNumber(z)) {
         return null;
       }
@@ -65,7 +108,7 @@ export function parseAction(raw: unknown): ActionCommand | null {
     }
 
     case "face": {
-      const { angle } = raw;
+      const { angle } = flat;
       if (!isFiniteNumber(angle)) {
         return null;
       }
@@ -73,7 +116,7 @@ export function parseAction(raw: unknown): ActionCommand | null {
     }
 
     case "activate": {
-      const { target } = raw;
+      const { target } = flat;
       if (!isActivateTarget(target)) {
         return null;
       }
@@ -81,7 +124,7 @@ export function parseAction(raw: unknown): ActionCommand | null {
     }
 
     case "fastTravel": {
-      const { location } = raw;
+      const { location } = flat;
       if (!isNonEmptyString(location)) {
         return null;
       }
@@ -90,7 +133,7 @@ export function parseAction(raw: unknown): ActionCommand | null {
 
     case "equip":
     case "useItem": {
-      const { itemName } = raw;
+      const { itemName } = flat;
       if (!isNonEmptyString(itemName)) {
         return null;
       }
@@ -98,7 +141,7 @@ export function parseAction(raw: unknown): ActionCommand | null {
     }
 
     case "heal": {
-      const { amount } = raw;
+      const { amount } = flat;
       if (!isFiniteNumber(amount) || amount <= 0) {
         return null;
       }
@@ -106,7 +149,7 @@ export function parseAction(raw: unknown): ActionCommand | null {
     }
 
     case "saveGame": {
-      const { name } = raw;
+      const { name } = flat;
       if (!isNonEmptyString(name)) {
         return null;
       }
@@ -114,7 +157,7 @@ export function parseAction(raw: unknown): ActionCommand | null {
     }
 
     case "notification": {
-      const { message } = raw;
+      const { message } = flat;
       if (!isNonEmptyString(message)) {
         return null;
       }
