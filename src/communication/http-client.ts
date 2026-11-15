@@ -3,8 +3,32 @@ import { CONFIG } from "../config";
 import * as SkT from '@skyrim-platform/skyrim-platform'
 
 const MAX_SENDS_PER_SEC = 5;
+const REQUEST_TIMEOUT_MS = 3000;
 let sendCount = 0;
 let lastReset = Date.now();
+
+/**
+ * Hardening pattern from skymp5-client settingsService: HttpClient has no
+ * timeout support (verified — cpp-httplib wrapper), and its thread pool is
+ * only 3, so a hung request starves every later one. Race a reject timer.
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, tag: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = globalThis.setTimeout
+      ? globalThis.setTimeout(() => reject(new Error(`${tag}: timeout after ${timeoutMs}ms`)), timeoutMs)
+      : null;
+    promise.then(
+      (value) => {
+        if (timer !== null) clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        if (timer !== null) clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
 
 function resetRateLimit(): void {
   const now = Date.now();
@@ -36,10 +60,14 @@ class SkyGuideHttpClient {
     }
 
     try {
-      const response = await this.client.post("/api/game-state", {
-        body: payload,
-        contentType: "application/json"
-      });
+      const response = await withTimeout(
+        this.client.post("/api/game-state", {
+          body: payload,
+          contentType: "application/json"
+        }),
+        REQUEST_TIMEOUT_MS,
+        "game-state POST",
+      );
 
       sendCount++;
 

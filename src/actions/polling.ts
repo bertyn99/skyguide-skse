@@ -2,13 +2,16 @@ import * as SkT from '@skyrim-platform/skyrim-platform'
 import { CONFIG } from "../config";
 import { parseAction } from "./parser";
 import { executeAction } from "./executor";
+import { clearGameTimeout, setGameTimeout } from "../timers";
 
 const INITIAL_BACKOFF_MS: number = CONFIG.pollingInterval;
 let pollingClient: SkT.HttpClient | null = null;
 let backoffMs = INITIAL_BACKOFF_MS;
 let consecutiveFailures = 0;
 let pollingActive = false;
-let pollTimerId: ReturnType<typeof setTimeout> | null = null;
+let pollTimerId: number | null = null;
+/** Outbox cursor — highest action id we have pulled from the server. */
+let lastSeenId = 0;
 
 function logDebug(message: string): void {
   if (CONFIG.debugMode) {
@@ -25,8 +28,12 @@ async function pollForActions(): Promise<void> {
     return;
   }
 
+  // at-most-once delivery: the server only returns actions newer than the
+  // highest id we have executed.
+  const endpoint = `${CONFIG.pollingEndpoint}?since=${lastSeenId}`;
+
   try {
-    const response = await pollingClient.get(CONFIG.pollingEndpoint);
+    const response = await pollingClient.get(endpoint);
 
     if (response.status === 200) {
       consecutiveFailures = 0;
@@ -44,6 +51,14 @@ async function pollForActions(): Promise<void> {
       const actions: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
 
       for (const raw of actions) {
+        // Track the outbox cursor before executing — each entry carries a
+        // monotonic id; unknown types still advance it.
+        if (typeof raw === "object" && raw !== null) {
+          const id = (raw as { id?: unknown }).id;
+          if (typeof id === "number" && Number.isFinite(id) && id > lastSeenId) {
+            lastSeenId = id;
+          }
+        }
         const action = parseAction(raw);
         if (action !== null) {
           executeAction(action);
@@ -76,7 +91,7 @@ function handleFailure(reason: string): void {
 function scheduleNextPoll(): void {
   if (!pollingActive) return;
 
-  pollTimerId = setTimeout(() => {
+  pollTimerId = setGameTimeout(() => {
     pollTimerId = null;
     pollForActions();
   }, backoffMs);
@@ -108,7 +123,7 @@ export function stopPolling(): void {
   pollingActive = false;
 
   if (pollTimerId !== null) {
-    clearTimeout(pollTimerId);
+    clearGameTimeout(pollTimerId);
     pollTimerId = null;
   }
 

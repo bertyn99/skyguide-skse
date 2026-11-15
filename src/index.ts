@@ -1,12 +1,21 @@
-import { once, on, printConsole, hooks, findConsoleCommand } from "./skyrimPlatform";
+import { once, on, printConsole, hooks, findConsoleCommand, Debug, Utility } from "./skyrimPlatform";
 import { registerAllEvents } from "./events";
 import { startPolling } from "./actions/polling";
 import { evaluatePriority, shouldSend, recordSentState } from "./arbitration/priority";
 import { serializeState } from "./game-state/serializer";
-import { collectFullState } from "./game-state/collector";
+import { collectBundle } from "./game-state/collector";
+import { buildModContext } from "./game-state/mod-context";
+import { dumpModContext } from "./communication/file-dump";
 import type { EventType } from "./game-state/types";
 import { sendGameState, isConnected } from "./communication/http-client";
+import {
+  initBridge,
+  isCompanionReady,
+  heartbeatAgeMs,
+  isOverlayVisible,
+} from "./bridge";
 import { CONFIG, PLAYER_FORM_ID } from "./config";
+import { getPlatformVersion } from "./skyrimPlatform";
 
 let lastTickTime = 0;
 let playerAnimation = "";
@@ -35,6 +44,7 @@ function registerSkyguideConsoleCommand(): void {
   host.numArgs = 0;
   host.execute = () => {
     printConsole("SkyGuide Status:");
+    printConsole(`  Platform version: ${getPlatformVersion()}`);
     printConsole(`  Connected: ${isConnected()}`);
     printConsole(`  Polling status: ${pollingStarted ? "active" : "inactive"}`);
     printConsole(`  Events registered: ${eventsRegistered ? "yes" : "no"}`);
@@ -42,6 +52,12 @@ function registerSkyguideConsoleCommand(): void {
     printConsole(`  Server: ${CONFIG.serverUrl}`);
     printConsole(`  Send interval: ${CONFIG.tickInterval}ms (on update)`);
     printConsole(`  Debug mode: ${CONFIG.debugMode}`);
+    const heartbeat = heartbeatAgeMs();
+    printConsole(
+      `  Companion bridge: ${isCompanionReady() ? `ready (heartbeat ${heartbeat}ms ago)` : "not ready"}, overlay ${isOverlayVisible() ? "visible" : "hidden"}`,
+    );
+    printConsole(`  Companion URL: ${CONFIG.companionUrl}`);
+    printConsole(`  Mod-context dump: ${CONFIG.modContextDumpEnabled ? CONFIG.modContextPath : "off"}`);
     // Returning false avoids running the original host command implementation.
     return false;
   };
@@ -51,15 +67,25 @@ function registerSkyguideConsoleCommand(): void {
 }
 
 function processAndSend(eventType: EventType, animation = ""): void {
-  if (!isConnected()) {
+  const bundle = collectBundle(animation, eventType);
+  if (!bundle) {
+    if (CONFIG.debugMode) {
+      printConsole("[SkyGuide] collectBundle returned null; skip send");
+    }
     return;
   }
 
-  const state = collectFullState(animation, eventType);
-  if (!state) {
+  const state = bundle.protocol;
+
+  try {
+    dumpModContext(buildModContext(bundle.snapshot, state));
+  } catch (err) {
     if (CONFIG.debugMode) {
-      printConsole("[SkyGuide] collectFullState returned null; skip send");
+      printConsole(`[SkyGuide] mod-context dump threw: ${String(err)}`);
     }
+  }
+
+  if (!isConnected()) {
     return;
   }
 
@@ -99,15 +125,39 @@ function safeProcessAndSend(eventType: EventType, animation = ""): void {
 }
 
 let isLoaded = false;
+
+/**
+ * Accessibility QoL switches (verified APIs, patterns from skymp5-client):
+ *  - bAlwaysActive: the game keeps simulating while unfocused/alt-tabbed —
+ *    critical for blind players who must leave the window for other tools.
+ *  - fAutoVanityModeDelay: suppress the auto-rotating vanity camera (3600s).
+ */
+function applyGameQolSettings(): void {
+  try {
+    Utility.setINIBool("bAlwaysActive:General", true);
+  } catch (err) {
+    printConsole(`[SkyGuide] bAlwaysActive INI set failed: ${String(err)}`);
+  }
+  try {
+    Utility.setINIFloat("fAutoVanityModeDelay:Camera", 3600);
+  } catch (err) {
+    printConsole(`[SkyGuide] vanity mode INI set failed: ${String(err)}`);
+  }
+}
+
 function init() {
   if (isLoaded) return;
 
   printConsole("SkyGuide plugin loaded!");
 
+  applyGameQolSettings();
+
   registerAllEvents();
   eventsRegistered = true;
   startPolling();
   pollingStarted = CONFIG.pollingEnabled;
+
+  initBridge();
 
   if (CONFIG.debugMode) {
     printConsole(`Server: ${CONFIG.serverUrl}`);
@@ -159,10 +209,6 @@ once("update", () => {
 });
 
 on("update", () => {
-  if (!isConnected()) {
-    return;
-  }
-
   const now = Date.now();
   if (now - lastTickTime < CONFIG.tickInterval) {
     return;

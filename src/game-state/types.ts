@@ -82,6 +82,8 @@ export interface NearbyNpcState {
   formId: number;
   name: string;
   distance: number;
+  /** Heading angle from the player to this actor (degrees, 0 = in front). */
+  headingAngle: number;
   health: number;
   level: number;
   race: string | null;

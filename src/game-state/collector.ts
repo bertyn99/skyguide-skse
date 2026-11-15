@@ -1,37 +1,22 @@
 import { Game } from "../skyrimPlatform";
-import type { PlayerState, EnemyState, CollectedState, EventType } from "./types";
-import { CONFIG, PLAYER_FORM_ID } from "../config";
-
-function getPlayerPosition(): { x: number; y: number; z: number } | null {
-  const player = Game.getPlayer();
-  if (!player) return null;
-  return {
-    x: player.getPositionX(),
-    y: player.getPositionY(),
-    z: player.getPositionZ()
-  };
-}
-
-function calculateDistance(
-  x1: number,
-  y1: number,
-  z1: number,
-  x2: number,
-  y2: number,
-  z2: number
-): number {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const dz = z2 - z1;
-  return Math.sqrt(dx * dx + dy * dy + dz * dz);
-}
+import type {
+  PlayerState,
+  EnemyState,
+  CollectedState,
+  EventType,
+  FullCollectedState,
+  NearbyNpcState,
+} from "./types";
+import { CONFIG } from "../config";
+import { collectNearbyNpcs } from "./collectors/nearby-collector";
+import { collectPlayerFullState } from "./collectors/player-collector";
+import { collectLocationState } from "./collectors/location-collector";
+import { collectQuestState } from "./collectors/quest-collector";
+import { collectCrosshairTarget } from "./collectors/crosshair-collector";
 
 function collectPlayerState(): PlayerState | null {
   const player = Game.getPlayer();
   if (!player) return null;
-
-  const pos = getPlayerPosition();
-  if (!pos) return null;
 
   return {
     health: player.getActorValue("health"),
@@ -39,102 +24,82 @@ function collectPlayerState(): PlayerState | null {
     magicka: player.getActorValue("magicka"),
     stamina: player.getActorValue("stamina"),
     level: player.getLevel(),
-    position: pos,
+    position: {
+      x: player.getPositionX(),
+      y: player.getPositionY(),
+      z: player.getPositionZ(),
+    },
     isSneaking: player.isSneaking(),
-    isDead: player.isDead()
+    isDead: player.isDead(),
   };
 }
 
-function collectEnemies(): EnemyState[] {
-  const player = Game.getPlayer();
-  if (!player) return [];
+function enemiesFromNearby(npcs: NearbyNpcState[]): EnemyState[] {
+  return npcs
+    .filter((npc) => !npc.isDead && npc.isHostile)
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, CONFIG.maxEnemies)
+    .map((npc) => ({
+      formId: npc.formId,
+      name: npc.name,
+      distance: npc.distance,
+      health: npc.health,
+      level: npc.level,
+    }));
+}
 
-  const playerPos = getPlayerPosition();
-  if (!playerPos) return [];
-
-  const seenFormIds = new Set<number>();
-  const enemies: EnemyState[] = [];
-
-  // Multi-scan: center + 8 offset positions to find multiple actors
-  // Game.findClosestActor() only returns ONE actor, so we scan multiple positions
-  const scanOffsets = [
-    { x: 0, y: 0 },
-    { x: CONFIG.enemyScanRadius, y: 0 },
-    { x: -CONFIG.enemyScanRadius, y: 0 },
-    { x: 0, y: CONFIG.enemyScanRadius },
-    { x: 0, y: -CONFIG.enemyScanRadius },
-    { x: CONFIG.enemyScanRadius * 0.707, y: CONFIG.enemyScanRadius * 0.707 },
-    { x: -CONFIG.enemyScanRadius * 0.707, y: CONFIG.enemyScanRadius * 0.707 },
-    { x: CONFIG.enemyScanRadius * 0.707, y: -CONFIG.enemyScanRadius * 0.707 },
-    { x: -CONFIG.enemyScanRadius * 0.707, y: -CONFIG.enemyScanRadius * 0.707 }
-  ];
-
-  for (const offset of scanOffsets) {
-    if (enemies.length >= CONFIG.maxEnemies) break;
-
-    const scanX = playerPos.x + offset.x;
-    const scanY = playerPos.y + offset.y;
-    const scanZ = playerPos.z;
-
-    const actor = Game.findClosestActor(scanX, scanY, scanZ, CONFIG.enemyScanRadius);
-    if (!actor) continue;
-
-    // Skip player
-    if (actor.getFormID() === PLAYER_FORM_ID) continue;
-
-    // Skip dead actors
-    if (actor.isDead()) continue;
-
-    // Deduplicate by formId
-    const formId = actor.getFormID();
-    if (seenFormIds.has(formId)) continue;
-    seenFormIds.add(formId);
-
-    const actorPos = {
-      x: actor.getPositionX(),
-      y: actor.getPositionY(),
-      z: actor.getPositionZ()
-    };
-
-    const distance = calculateDistance(
-      playerPos.x,
-      playerPos.y,
-      playerPos.z,
-      actorPos.x,
-      actorPos.y,
-      actorPos.z
-    );
-
-    const baseObj = actor.getBaseObject();
-    const name = baseObj ? baseObj.getName() || "Unknown" : "Unknown";
-
-    enemies.push({
-      formId,
-      name,
-      distance,
-      health: actor.getActorValue("health"),
-      level: actor.getLevel()
-    });
+function safeCall<T>(fn: () => T): T | null {
+  try {
+    return fn();
+  } catch {
+    return null;
   }
+}
 
-  return enemies;
+export interface CollectionBundle {
+  protocol: CollectedState;
+  snapshot: FullCollectedState;
+}
+
+/**
+ * One collection pass per send: protocol-v1 payload (reflex + dashboard) and
+ * the rich snapshot (Gate/Composer mod-context dump) share the nearby-NPC scan.
+ */
+export function collectBundle(
+  playerAnimation: string = "",
+  eventType: EventType = "tick",
+): CollectionBundle | null {
+  const player = collectPlayerState();
+  if (!player) return null;
+
+  const nearbyNpcs = safeCall(collectNearbyNpcs) ?? [];
+  const combatState = Game.getPlayer()?.getCombatState() ?? 0;
+
+  return {
+    protocol: {
+      player,
+      combatState,
+      enemies: enemiesFromNearby(nearbyNpcs),
+      playerAnimation,
+      eventType,
+    },
+    snapshot: {
+      player: safeCall(collectPlayerFullState),
+      nearbyNpcs,
+      crosshairTarget: safeCall(collectCrosshairTarget),
+      location: safeCall(collectLocationState),
+      quest: safeCall(collectQuestState),
+      input: null,
+      menu: null,
+      environment: null,
+      eventType,
+    },
+  };
 }
 
 export function collectFullState(
   playerAnimation: string = "",
-  eventType: EventType = "tick"
+  eventType: EventType = "tick",
 ): CollectedState | null {
-  const player = collectPlayerState();
-  if (!player) return null;
-
-  const combatState = Game.getPlayer()?.getCombatState() ?? 0;
-  const enemies = collectEnemies();
-
-  return {
-    player,
-    combatState,
-    enemies,
-    playerAnimation,
-    eventType
-  };
+  return collectBundle(playerAnimation, eventType)?.protocol ?? null;
 }

@@ -16,13 +16,17 @@ export const {
   hooks,
   findConsoleCommand,
   ObjectReference,
+  Actor,
   HttpClient,
   Ui,
   Game,
   Input,
   DxScanCode,
+  FormType,
   Utility,
   Weather,
+  browser,
+  getPlatformVersion,
 } = skyrimPlatform;
 
 export type * from '@skyrim-platform/skyrim-platform'

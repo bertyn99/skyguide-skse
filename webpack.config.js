@@ -112,7 +112,9 @@ module.exports = {
     externals: {
         // Do not bundle skyrim platform. Instead require('skyrimPlatform') at runtime
         '@skyrim-platform/skyrim-platform': ['skyrimPlatform'], // <--- support import 'skyrimPlatform'
-        'skyrimPlatform': ['skyrimPlatform']
+        'skyrimPlatform': ['skyrimPlatform'],
+        // Node stdlib is available in the SP runtime; do not polyfill.
+        'fs': 'commonjs fs',
     },
     module: {
         rules: [{ test: /\.tsx?$/, loader: 'ts-loader', options: { configFile: 'tsconfig.json' }}]

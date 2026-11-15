@@ -1,6 +1,15 @@
-import { Debug, DxScanCode, Game, Input, Ui, printConsole } from "../skyrimPlatform";
+import {
+  Debug,
+  DxScanCode,
+  FormType,
+  Game,
+  Input,
+  Ui,
+  printConsole,
+} from "../skyrimPlatform";
 import { CONFIG, PLAYER_FORM_ID } from "../config";
 import type { ActionCommand } from "./types";
+import { setGameTimeout } from "../timers";
 
 type FormLike = {
   isDeleted?: () => boolean;
@@ -97,22 +106,60 @@ function isActionBlockedByUi(): boolean {
   return false;
 }
 
-function getClosestReference(
-  x: number,
-  y: number,
-  z: number,
-  radius: number,
+/**
+ * Nearest loaded reference of a given form type in the player's cell, found by
+ * cell enumeration (Cell.getNumRefs/getNthRef — verified APIs; the old
+ * `Game.findClosestReference` call here was NOT a real API). Cell order is not
+ * distance-ordered, so we scan and pick the closest valid one.
+ */
+function getClosestReferenceOfType(
+  player: { getParentCell: () => unknown },
+  formType: number,
+  playerFormId: number,
 ): unknown | null {
-  const gameWithClosestReference = Game as unknown as {
-    findClosestReference?: (
-      sx: number,
-      sy: number,
-      sz: number,
-      sr: number,
-    ) => unknown;
-  };
+  const cell = player.getParentCell() as
+    | { getNumRefs?: (filter: number) => number; getNthRef?: (n: number, filter: number) => unknown }
+    | null;
+  if (!cell || typeof cell.getNumRefs !== "function" || typeof cell.getNthRef !== "function") {
+    return null;
+  }
 
-  return gameWithClosestReference.findClosestReference?.(x, y, z, radius) ?? null;
+  let count = 0;
+  try {
+    count = cell.getNumRefs(formType) ?? 0;
+  } catch {
+    return null;
+  }
+
+  let best: unknown = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  let origin: { x: number; y: number; z: number } | null = null;
+
+  for (let i = 0; i < count; i++) {
+    const ref = cell.getNthRef(i, formType);
+    if (!ref || !isValidReference(ref)) continue;
+
+    const formId = getReferenceFormId(ref);
+    if (formId === null || formId === playerFormId) continue;
+
+    if (!origin) {
+      origin = getPlayerPosition(player as unknown as PositionLike);
+    }
+    if (!origin) return null;
+
+    const candidate = ref as unknown as PositionLike;
+    const dx = candidate.getPositionX() - origin.x;
+    const dy = candidate.getPositionY() - origin.y;
+    const dz = candidate.getPositionZ() - origin.z;
+    const distance = dx * dx + dy * dy + dz * dz;
+
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = ref;
+    }
+  }
+
+  return best;
 }
 
 function executeSafely(actionType: ActionCommand["type"], operation: () => void): boolean {
@@ -127,20 +174,12 @@ function executeSafely(actionType: ActionCommand["type"], operation: () => void)
 }
 
 function releaseBlockAfterDelay(delayMs: number): void {
-  const runtimeTimers = globalThis as unknown as {
-    setTimeout?: (callback: () => void, timeout: number) => unknown;
-  };
-
-  if (typeof runtimeTimers.setTimeout === "function") {
-    runtimeTimers.setTimeout(() => {
-      // @ts-ignore
-      Input.releaseKey(DxScanCode.LeftShift);
-    }, delayMs);
-    return;
-  }
-
-  // @ts-ignore
-  Input.releaseKey(DxScanCode.LeftShift); 
+  // Game-loop timer: runs on `update`, so it self-suspends during loading
+  // screens instead of releasing into a loading frame like a Node timer could.
+  setGameTimeout(() => {
+    // @ts-ignore
+    Input.releaseKey(DxScanCode.LeftShift);
+  }, delayMs);
 }
 
 export function executeAction(action: ActionCommand): boolean {
@@ -201,18 +240,18 @@ export function executeAction(action: ActionCommand): boolean {
       }
 
       if (action.target === "nearestDoor") {
-        const nearestDoor = getClosestReference(x, y, z, 2000);
+        const nearestDoor = getClosestReferenceOfType(player, FormType.Door, PLAYER_FORM_ID);
         if (!isValidReference(nearestDoor)) {
           logDebug("Activate blocked: no valid nearest door");
           return false;
         }
 
         return executeSafely(action.type, () => {
-          nearestDoor.activate(player);
+          (nearestDoor as ActivatableRef).activate(player);
         });
       }
 
-      const nearestContainer = getClosestReference(x, y, z, 2000);
+      const nearestContainer = getClosestReferenceOfType(player, FormType.Container, PLAYER_FORM_ID);
       if (!isValidReference(nearestContainer)) {
         logDebug("Activate blocked: no valid nearest container");
         return false;

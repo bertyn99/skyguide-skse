@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>SkyGuide CEF media spike</title>
+<style>
+  body {
+    background: rgba(10, 12, 18, 0.55);
+    color: #e8ecf4;
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 20px;
+    margin: 0;
+    padding: 24px;
+    text-shadow: 0 1px 2px #000;
+  }
+  h1 { font-size: 26px; margin: 0 0 12px; color: #9fd2ff; }
+  li { margin: 6px 0; }
+  .pass { color: #7be58a; }
+  .fail { color: #ff8f8f; }
+  .warn { color: #ffd479; }
+</style>
+</head>
+<body>
+<h1>SkyGuide CEF media spike</h1>
+<ul id="results"><li>running…</li></ul>
+
+<script>
+(function () {
+  "use strict";
+
+  // --- transport back to the plugin --------------------------------------
+  var sp = window.skyrimPlatform;
+  function report(name, value, state) {
+    var text = name + " = " + value;
+    var line = document.createElement("li");
+    line.textContent = text;
+    if (state === "pass") line.className = "pass";
+    else if (state === "fail") line.className = "fail";
+    else if (state === "warn") line.className = "warn";
+    document.getElementById("results").appendChild(line);
+
+    // Print into the Skyrim console via the plugin bridge.
+    if (sp && typeof sp.sendMessage === "function") {
+      sp.sendMessage("spike-result", name, String(value));
+    } else {
+      console.log("[spike]", name, value); // dev-browser fallback
+    }
+  }
+
+  function heartbeat() {
+    if (sp && typeof sp.sendMessage === "function") {
+      sp.sendMessage("heartbeat");
+    }
+  }
+
+  // --- 0. handshake + heartbeat (plugin gates injections on this) --------
+  report("handshake", sp ? "skyrimPlatform present" : "MISSING skyrimPlatform global", sp ? "pass" : "fail");
+  if (sp && typeof sp.sendMessage === "function") {
+    sp.sendMessage("companion-ready");
+    sp.sendMessage("companion-log", "spike page booted");
+  }
+  setInterval(heartbeat, 5000);
+  heartbeat();
+
+  // --- 1. environment -----------------------------------------------------
+  report("userAgent", navigator.userAgent);
+  var ac = window.AudioContext || window.webkitAudioContext;
+  report("AudioContext", ac ? "available" : "MISSING", ac ? "pass" : "fail");
+  report("MediaRecorder", window.MediaRecorder ? "available" : "MISSING", window.MediaRecorder ? "pass" : "fail");
+  report("webm/opus recording", window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "supported" : "NOT supported", window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "pass" : "warn");
+  report("WebSocket", window.WebSocket ? "available" : "MISSING", window.WebSocket ? "pass" : "fail");
+  report("perf.memory", window.performance && performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) + " MB heap" : "n/a");
+
+  // --- 2. AUDIO AUTOPLAY WITHOUT A GESTURE (the key question) -------------
+  // 2a. WebAudio: create context with NO user gesture, play a tone, and check
+  //     that currentTime advances (silent 1kHz sine at near-zero gain).
+  try {
+    var ctx = new ac();
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
+    gain.gain.value = 0.0001; // inaudible
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(0);
+    var t0 = ctx.currentTime;
+    var resumed = false;
+    if (ctx.state === "suspended" && typeof ctx.resume === "function") {
+      ctx.resume();
+      resumed = true;
+    }
+    setTimeout(function () {
+      var advanced = ctx.currentTime > t0 + 0.2;
+      report(
+        "audio.autoplay.webaudio",
+        "state=" + ctx.state + " currentTime advanced=" + advanced + (resumed ? " (after resume())" : " (no resume needed)"),
+        advanced ? "pass" : "fail"
+      );
+    }, 700);
+  } catch (err) {
+    report("audio.autoplay.webaudio", "ERROR: " + err, "fail");
+  }
+
+  // 2b. <audio> element autoplay of a generated 0.25s WAV data URI.
+  function makeWavDataUri() {
+    var sampleRate = 22050, seconds = 0.25;
+    var n = Math.floor(sampleRate * seconds);
+    var buf = new ArrayBuffer(44 + n * 2);
+    var view = new DataView(buf);
+    function str(off, s) { for (var i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); }
+    str(0, "RIFF"); view.setUint32(4, 36 + n * 2, true); str(8, "WAVE");
+    str(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+    str(36, "data"); view.setUint32(40, n * 2, true);
+    for (var i = 0; i < n; i++) {
+      // 440 Hz sine, tiny amplitude (inaudible test tone)
+      view.setInt16(44 + i * 2, Math.round(120 * Math.sin((2 * Math.PI * 440 * i) / sampleRate)), true);
+    }
+    var bytes = new Uint8Array(buf);
+    var bin = "";
+    for (var j = 0; j < bytes.length; j++) bin += String.fromCharCode(bytes[j]);
+    return "data:audio/wav;base64," + btoa(bin);
+  }
+  try {
+    var el = new Audio(makeWavDataUri());
+    var p = el.play();
+    if (p && typeof p.then === "function") {
+      p.then(function () { report("audio.autoplay.element", "play() resolved (no gesture)", "pass"); })
+       .catch(function (err) { report("audio.autoplay.element", "play() REJECTED: " + err, "fail"); });
+    } else {
+      report("audio.autoplay.element", "play() returned non-promise (old API)", "warn");
+    }
+  } catch (err) {
+    report("audio.autoplay.element", "ERROR: " + err, "fail");
+  }
+
+  // --- 3. MIC CAPTURE (voice questions) ------------------------------------
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(function (stream) {
+        report("mic.getUserMedia", "granted, tracks=" + stream.getAudioTracks().length, "pass");
+        stream.getTracks().forEach(function (t) { t.stop(); });
+      })
+      .catch(function (err) { report("mic.getUserMedia", "DENIED/failed: " + err.name, "fail"); });
+  } else {
+    report("mic.getUserMedia", "navigator.mediaDevices UNAVAILABLE", "fail");
+  }
+
+  // --- 4. SCREEN CAPTURE (clips) -------------------------------------------
+  if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+    // Do NOT call it — in a windowless CEF the picker may hang the render
+    // process. Presence check only; a manual call test is in the README.
+    report("screen.getDisplayMedia", "API present (not invoked — picker may hang in windowless CEF)", "warn");
+  } else {
+    report("screen.getDisplayMedia", "API UNAVAILABLE (expected in windowless CEF)", "fail");
+  }
+
+  // --- 5. APP WEBSOCKET REACHABILITY ---------------------------------------
+  try {
+    var ws = new WebSocket("ws://localhost:3000/_ws");
+    var opened = false;
+    var timeout = setTimeout(function () {
+      if (!opened) report("ws.app.connect", "TIMEOUT (app down or blocked)", "fail");
+      try { ws.close(); } catch (e) {}
+    }, 4000);
+    ws.onopen = function () {
+      opened = true;
+      clearTimeout(timeout);
+      report("ws.app.connect", "OPEN (ws://localhost:3000/_ws works in-game)", "pass");
+      ws.close();
+    };
+    ws.onerror = function () {
+      if (!opened) { clearTimeout(timeout); report("ws.app.connect", "ERROR (app down or blocked)", "fail"); }
+    };
+  } catch (err) {
+    report("ws.app.connect", "ERROR: " + err, "fail");
+  }
+
+  // --- 6. ES/Chromium feature floor probes ---------------------------------
+  report("es.optional-chaining", (typeof (0, eval)("null?.x")) !== "undefined" ? "ok" : "throw", "warn");
+  try { new ResizeObserver(function () {}); report("es.ResizeObserver", "available", "pass"); }
+  catch (e) { report("es.ResizeObserver", "MISSING (old Chromium)", "warn"); }
+  try { structuredClone({ a: 1 }); report("es.structuredClone", "available", "pass"); }
+  catch (e) { report("es.structuredClone", "MISSING (old Chromium)", "warn"); }
+})();
+</script>
+</body>
+</html>

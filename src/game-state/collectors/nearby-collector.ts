@@ -1,4 +1,4 @@
-import { Game } from "../../skyrimPlatform";
+import { Actor, FormType, Game } from "../../skyrimPlatform";
 import { CONFIG, PLAYER_FORM_ID } from "../../config";
 import type { NearbyNpcState } from "../types";
 
@@ -27,6 +27,12 @@ function calculateDistance(
   return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
+/**
+ * Enumerate loaded actors in the player's cell via Cell.getNumRefs/getNthRef
+ * (verified APIs — replaces the old 9-offset findClosestActor scan, which
+ * approximated "all nearby actors" by re-searching from offsets).
+ * `FormType.Character` (= 62) filters to live actor references.
+ */
 export function collectNearbyNpcs(): NearbyNpcState[] {
   const player = Game.getPlayer();
   if (!player) return [];
@@ -34,35 +40,37 @@ export function collectNearbyNpcs(): NearbyNpcState[] {
   const playerPos = getPlayerPosition();
   if (!playerPos) return [];
 
-  const scanOffsets = [
-    { x: 0, y: 0 },
-    { x: CONFIG.enemyScanRadius, y: 0 },
-    { x: -CONFIG.enemyScanRadius, y: 0 },
-    { x: 0, y: CONFIG.enemyScanRadius },
-    { x: 0, y: -CONFIG.enemyScanRadius },
-    { x: CONFIG.enemyScanRadius * 0.707, y: CONFIG.enemyScanRadius * 0.707 },
-    { x: -CONFIG.enemyScanRadius * 0.707, y: CONFIG.enemyScanRadius * 0.707 },
-    { x: CONFIG.enemyScanRadius * 0.707, y: -CONFIG.enemyScanRadius * 0.707 },
-    { x: -CONFIG.enemyScanRadius * 0.707, y: -CONFIG.enemyScanRadius * 0.707 },
-  ];
+  const cell = player.getParentCell();
+  if (!cell) return [];
 
-  const seenFormIds = new Set<number>();
+  let refCount = 0;
+  try {
+    refCount = cell.getNumRefs(FormType.Character) ?? 0;
+  } catch {
+    return [];
+  }
+
   const nearbyNpcs: NearbyNpcState[] = [];
 
-  for (const offset of scanOffsets) {
+  for (let i = 0; i < refCount; i++) {
     if (nearbyNpcs.length >= CONFIG.maxEnemies) break;
 
-    const scanX = playerPos.x + offset.x;
-    const scanY = playerPos.y + offset.y;
-    const scanZ = playerPos.z;
-    const actor = Game.findClosestActor(scanX, scanY, scanZ, CONFIG.enemyScanRadius);
+    let actorRef: Awaited<ReturnType<typeof cell.getNthRef>> | null = null;
+    try {
+      actorRef = cell.getNthRef(i, FormType.Character);
+    } catch {
+      continue;
+    }
+    if (!actorRef) continue;
 
+    // getNthRef yields ObjectReference; the detail probes below are Actor
+    // methods (isHostileToActor, isGuard, ...) — cast via the verified
+    // Actor.from helper (ObjectReference extends PapyrusObject).
+    const actor = Actor.from(actorRef);
     if (!actor) continue;
 
     const formId = actor.getFormID();
     if (formId === PLAYER_FORM_ID) continue;
-    if (seenFormIds.has(formId)) continue;
-    seenFormIds.add(formId);
 
     const actorPos = {
       x: actor.getPositionX(),
@@ -155,10 +163,18 @@ export function collectNearbyNpcs(): NearbyNpcState[] {
       isDead = false;
     }
 
+    let headingAngle = 0;
+    try {
+      headingAngle = player.getHeadingAngle(actor);
+    } catch {
+      headingAngle = 0;
+    }
+
     nearbyNpcs.push({
       formId,
       name,
       distance,
+      headingAngle,
       health,
       level,
       race,
