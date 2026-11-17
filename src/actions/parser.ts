@@ -1,7 +1,6 @@
-import type { ActionCommand } from "./types";
+import type { ActionCommand, ActivateTarget } from "./types";
 
 type ActionType = ActionCommand["type"];
-type ActivateAction = Extract<ActionCommand, { type: "activate" }>;
 
 const ACTION_TYPES = new Set<ActionType>([
   "move",
@@ -17,19 +16,44 @@ const ACTION_TYPES = new Set<ActionType>([
   "heal",
   "saveGame",
   "notification",
+  "scan",
+  "autowalkTo",
+  "autowalkCancel",
   "forceThirdPerson",
   "forceFirstPerson",
 ]);
 
-const ACTIVATE_TARGETS = new Set<ActivateAction["target"]>([
+const ACTIVATE_TARGETS = new Set<ActivateTarget>([
   "crosshair",
   "nearestNPC",
   "nearestDoor",
   "nearestContainer",
 ]);
 
-function isActivateTarget(value: unknown): value is ActivateAction["target"] {
-  return typeof value === "string" && ACTIVATE_TARGETS.has(value as ActivateAction["target"]);
+function isActivateTarget(value: unknown): value is ActivateTarget {
+  return typeof value === "string" && ACTIVATE_TARGETS.has(value as ActivateTarget);
+}
+
+/**
+ * Accepts a decimal number, a decimal string, or an explicit hex string
+ * ("0x14") — composer params are a free record and LLMs like to emit hex
+ * form ids. Bare strings parse as DECIMAL (only the 0x prefix means hex).
+ */
+function parseFormId(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (/^0x[0-9a-f]+$/i.test(trimmed)) {
+      const parsed = Number.parseInt(trimmed.slice(2), 16);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    } else if (/^\d+$/.test(trimmed)) {
+      const parsed = Number.parseInt(trimmed, 10);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+  }
+  return null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -45,8 +69,9 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 /**
- * The server outbox wraps parameters as `{ type, params, id, source }`.
- * Flatten so both that shape and the legacy flat `{ type, amount, ... }` parse.
+ * The companion outbox (`GET /api/actions`) wraps fields as
+ * `{ type, params, id, source }`. Flatten so both that shape and a flat
+ * `{ type, amount, ... }` parse.
  */
 function flattenOutboxShape(raw: Record<string, unknown>): Record<string, unknown> {
   const params = raw.params;
@@ -56,43 +81,13 @@ function flattenOutboxShape(raw: Record<string, unknown>): Record<string, unknow
   return { ...params, type: raw.type, id: raw.id };
 }
 
-const TYPE_ALIASES: Record<string, ActionType> = {
-  open_door: "activate",
-  openDoor: "activate",
-  use_potion: "useItem",
-  usePotion: "useItem",
-  draw_weapon: "drawWeapon",
-  sheathe_weapon: "sheatheWeapon",
-};
-
 export function parseAction(raw: unknown): ActionCommand | null {
   if (!isRecord(raw)) {
     return null;
   }
 
   const flat = flattenOutboxShape(raw);
-  const rawType = flat.type;
-  const aliased =
-    typeof rawType === "string" && rawType in TYPE_ALIASES
-      ? TYPE_ALIASES[rawType]
-      : rawType;
-  const actionType = aliased;
-
-  // Alias open_door → activate nearestDoor when no target was given.
-  if (
-    actionType === "activate" &&
-    !isActivateTarget(flat.target) &&
-    (rawType === "open_door" || rawType === "openDoor")
-  ) {
-    flat.target = "nearestDoor";
-  }
-  if (
-    (actionType === "useItem" || actionType === "equip") &&
-    !isNonEmptyString(flat.itemName) &&
-    isNonEmptyString(flat.name)
-  ) {
-    flat.itemName = flat.name;
-  }
+  const actionType = flat.type;
 
   if (typeof actionType !== "string" || !ACTION_TYPES.has(actionType as ActionType)) {
     return null;
@@ -116,11 +111,36 @@ export function parseAction(raw: unknown): ActionCommand | null {
     }
 
     case "activate": {
+      // W4 formId targeting — validated against the scanner cache in the
+      // executor (an LLM must not activate arbitrary forms).
+      const formId = parseFormId(flat.formId);
+      if (formId !== null) {
+        return { type: "activate", formId };
+      }
       const { target } = flat;
       if (!isActivateTarget(target)) {
         return null;
       }
       return { type: "activate", target };
+    }
+
+    case "autowalkTo": {
+      // Reuses parseFormId (hex/decimal forms from the composer) and falls
+      // back to the CONFIG stop distance when the LLM omits it.
+      const formId = parseFormId(flat.formId);
+      if (formId === null) {
+        return null;
+      }
+      const rawDistance = flat.stopDistance;
+      const stopDistance =
+        typeof rawDistance === "number" && Number.isFinite(rawDistance) && rawDistance > 0
+          ? rawDistance
+          : 100;
+      return { type: "autowalkTo", formId, stopDistance };
+    }
+
+    case "autowalkCancel": {
+      return { type: "autowalkCancel" };
     }
 
     case "fastTravel": {
@@ -168,6 +188,7 @@ export function parseAction(raw: unknown): ActionCommand | null {
     case "sheatheWeapon":
     case "attack":
     case "block":
+    case "scan":
     case "forceThirdPerson":
     case "forceFirstPerson":
       return { type: actionType };

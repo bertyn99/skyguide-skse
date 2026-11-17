@@ -9,7 +9,7 @@ export const CONFIG = {
   tickInterval: 500,
   enemyScanRadius: 5000,
   maxEnemies: 10,
-  debugMode: false,
+  debugMode: true,
   // HTTP action polling: GET /api/actions?since=<lastId> — the server keeps
   // an in-memory outbox of pipeline actions (composer suggestions, question
   // answers), pruned after 15s. Each action carries a monotonic id; we send
@@ -30,4 +30,24 @@ export const CONFIG = {
   // absolute — set SKYRIM_CONTEXT_FILE_PATH on the app to the same file.
   modContextDumpEnabled: true,
   modContextPath: "Data/Platform/SkyGuide/state.json",
+  // World object scanner (docs/ACCESSIBILITY-PORT.md §5.1). Sweep is
+  // budgeted across update ticks; cache dies after ~100 units of movement
+  // or a cell change (their RESCAN_DISTANCE).
+  scannerEnabled: true,
+  scanRescanDistance: 100,
+  scanMaxOutput: 64,
+  scanProbeBudget: 96,
+  scanMaxCells: 4,
+  scanRadiusUnits: 2500,
+  // Autowalk bridge (W6). The ESP announces itself via SkyGuide_AutoWalkReady
+  // (sender = quest) at OnInit and after every save load — no form-ID
+  // hardcoding. Until the Ready announce arrives autowalkTo fails cleanly.
+  autowalkEnabled: true,
+  autowalkAckTimeoutMs: 2000,
+  autowalkStopDistance: 100,
+  // Menu-focus narration (ItemMenu family via Ui.getString). Disabled
+  // automatically when Skyrim Access is installed. 100ms matches their poll.
+  menuNarrationEnabled: true,
+  menuFocusInterval: 100,
+  inventoryDumpMax: 48,
 } as const;

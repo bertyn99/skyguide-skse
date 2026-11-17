@@ -12,6 +12,7 @@ export const {
   once,
   on,
   printConsole,
+  writeLogs,
   Debug,
   hooks,
   findConsoleCommand,
@@ -27,6 +28,8 @@ export const {
   Weather,
   browser,
   getPlatformVersion,
+  Quest,
+  storage,
 } = skyrimPlatform;
 
 export type * from '@skyrim-platform/skyrim-platform'

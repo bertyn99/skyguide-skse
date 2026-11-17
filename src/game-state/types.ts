@@ -1,5 +1,17 @@
 export type EventType = "tick" | "hit" | "combatState" | `combatState_${number}`;
 
+import type { ScannedObjectCore } from "../world/scanner-core";
+import type { UiState } from "./menu-state";
+import type { MenuFocusState } from "./menu-focus-core";
+import type { InventoryDumpRow } from "./inventory-core";
+
+/** Autowalk state — "walking"/"arrived" only become real in W6 (ESP). */
+export type NavigationStatus = "idle" | "walking" | "arrived" | "cancelled" | "failed";
+
+export interface NavigationState {
+  status: NavigationStatus;
+}
+
 export interface Position {
   x: number;
   y: number;
@@ -31,6 +43,18 @@ export interface CollectedState {
   enemies: EnemyState[];
   playerAnimation: string;
   eventType: EventType;
+  /**
+   * Fast-lane extensions (protocol v1, additive — the app tolerates absent
+   * fields so old plugins keep working). Absent = feature not collected.
+   */
+  headingAngleZ?: number;
+  isStuck?: boolean;
+  /** Player-relative bearing of the nearest obstacle when stuck (°, -180..180). */
+  stuckRelDeg?: number;
+  navigation?: NavigationState;
+  ui?: UiState;
+  /** Staged only when the GFx focus diff fired this send. */
+  menu?: MenuFocusState;
 }
 
 export interface HeadingState {
@@ -147,11 +171,16 @@ export interface EnvironmentState {
 export interface FullCollectedState {
   player: PlayerFullState | null;
   nearbyNpcs: NearbyNpcState[];
+  worldObjects: ScannedObjectCore[];
   crosshairTarget: CrosshairTarget | null;
   location: LocationState | null;
   quest: QuestState | null;
   input: InputState | null;
   menu: MenuState | null;
   environment: EnvironmentState | null;
+  /** Active player effect names (effectStart/Finish tracking — W4). */
+  effects: string[];
+  /** Player inventory rows while a narratable menu is open. */
+  inventoryItems: InventoryDumpRow[];
   eventType: EventType;
 }

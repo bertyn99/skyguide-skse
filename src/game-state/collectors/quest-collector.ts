@@ -1,5 +1,7 @@
 import { Game } from "../../skyrimPlatform";
-import type { Quest } from "../../skyrimPlatform";
+// The shim re-exports the runtime `Quest` VALUE (W6); the class TYPE comes
+// straight from the typings (same shape, different import path).
+import type { Quest } from "@skyrim-platform/skyrim-platform";
 import type { QuestState } from "../types";
 
 export function collectQuestState(): QuestState | null {

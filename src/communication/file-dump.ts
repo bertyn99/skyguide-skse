@@ -1,4 +1,5 @@
 import { printConsole } from "../skyrimPlatform";
+import { logDiag } from "../diag";
 import { CONFIG } from "../config";
 
 /**
@@ -18,17 +19,28 @@ type FsModule = {
 };
 
 let fsModule: FsModule | null | undefined;
+let fsFailureLogged = false;
+let fsSuccessLogged = false;
+
+function logFsFailure(msg: string): void {
+  if (fsFailureLogged) return;
+  fsFailureLogged = true;
+  logDiag(`[SkyGuide] fs UNAVAILABLE — state.json disabled: ${msg}`);
+}
 
 function loadFs(): FsModule | null {
   if (fsModule !== undefined) return fsModule;
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     fsModule = require("fs") as FsModule;
+    // SP's host fs is a PARTIAL Node shim — dump what it actually exposes.
+    logDiag(`[SkyGuide] fs keys: ${Object.keys(fsModule as unknown as Record<string, unknown>).join(",")}`);
+    logDiag(
+      `[SkyGuide] fs methods: writeFileSync=${typeof (fsModule as unknown as Record<string, unknown>).writeFileSync} writeFile=${typeof (fsModule as unknown as Record<string, unknown>).writeFile} readFileSync=${typeof (fsModule as unknown as Record<string, unknown>).readFileSync}`,
+    );
   } catch (err) {
     fsModule = null;
-    if (CONFIG.debugMode) {
-      printConsole(`[SkyGuide] Node fs unavailable: ${String(err)}`);
-    }
+    logFsFailure(String(err));
   }
   return fsModule;
 }
@@ -42,28 +54,61 @@ function parentDir(filePath: string): string | null {
 export function dumpModContext(payload: unknown): boolean {
   if (!CONFIG.modContextDumpEnabled) return false;
 
-  const fs = loadFs();
-  if (!fs) return false;
+  const fsAny = loadFs() as unknown as Record<string, unknown> | null;
+  if (!fsAny) return false;
 
   const target = CONFIG.modContextPath;
-  const tmp = `${target}.tmp`;
 
   try {
-    const dir = parentDir(target);
-    if (dir) {
+    const data = JSON.stringify(payload);
+    // SP's fs shim: prefer atomic write+rename, fall back to whatever
+    // write primitive exists (sync or callback-style).
+    if (typeof fsAny.writeFileSync === "function") {
+      const tmp = `${target}.tmp`;
       try {
-        fs.mkdirSync(dir, { recursive: true });
+        const dir = parentDir(target);
+        if (dir) {
+          try {
+            (fsAny.mkdirSync as FsModule["mkdirSync"])?.(dir, { recursive: true });
+          } catch {
+            // Directory may already exist.
+          }
+        }
+        (fsAny.writeFileSync as FsModule["writeFileSync"])(tmp, data);
+        if (typeof fsAny.renameSync === "function") {
+          (fsAny.renameSync as FsModule["renameSync"])(tmp, target);
+        }
       } catch {
-        // Directory may already exist.
+        // Direct write fallback (atomicity is best-effort).
+        (fsAny.writeFileSync as FsModule["writeFileSync"])(target, data);
       }
+    } else if (typeof fsAny.writeFile === "function") {
+      // Callback-style Node writeFile — the SP event loop drains callbacks
+      // between frames (same mechanism as HttpClient callbacks).
+      (fsAny.writeFile as (p: string, d: string, cb: (err: unknown) => void) => void)(
+        target,
+        data,
+        (err) => {
+          if (err) logFsFailure(String(err));
+          else if (!fsSuccessLogged) {
+            fsSuccessLogged = true;
+            logDiag(`[SkyGuide] state.json written (async): ${target}`);
+          }
+        },
+      );
+    } else {
+      if (!fsFailureLogged) {
+        logFsFailure("no usable write primitive on fs module");
+      }
+      return false;
     }
-    fs.writeFileSync(tmp, JSON.stringify(payload));
-    fs.renameSync(tmp, target);
+    if (!fsSuccessLogged) {
+      fsSuccessLogged = true;
+      logDiag(`[SkyGuide] state.json written: ${target}`);
+    }
     return true;
   } catch (err) {
-    if (CONFIG.debugMode) {
-      printConsole(`[SkyGuide] mod-context dump failed: ${String(err)}`);
-    }
+    logFsFailure(String(err));
     return false;
   }
 }

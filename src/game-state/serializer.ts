@@ -1,4 +1,6 @@
-import type { CollectedState, EventType } from "./types";
+import type { CollectedState, EventType, NavigationState } from "./types";
+import type { UiState } from "./menu-state";
+import type { MenuFocusState } from "./menu-focus-core";
 
 export type PriorityLevel = "critical" | "high" | "medium" | "low" | "suppressed";
 
@@ -20,6 +22,13 @@ export interface SkydiveGameStateData {
   enemies: SkydiveEnemyState[];
   playerAnimation: string;
   eventType: SkydiveEventType;
+  /** Protocol-v1 additive extensions — absent on old plugins. */
+  headingAngleZ?: number;
+  isStuck?: boolean;
+  stuckRelDeg?: number;
+  navigation?: NavigationState;
+  ui?: UiState;
+  menu?: MenuFocusState;
 }
 
 export interface GameStatePayload {
@@ -39,6 +48,10 @@ function normalizeEventType(eventType: EventType): SkydiveEventType {
 
 /**
  * Single outbound payload format: skydive-app protocol.
+ * The extra `data` fields (headingAngleZ, isStuck, navigation, ui) are
+ * protocol-v1 ADDITIVE extensions — `game-state.post.ts` validates only the
+ * envelope, and the app tolerates absent fields (old plugins keep working;
+ * JSON.stringify drops undefined).
  */
 export function serializeState(state: CollectedState, priority: PriorityLevel): string {
   const payload: GameStatePayload = {
@@ -53,7 +66,13 @@ export function serializeState(state: CollectedState, priority: PriorityLevel): 
         animation: ""
       })),
       playerAnimation: state.playerAnimation,
-      eventType: normalizeEventType(state.eventType)
+      eventType: normalizeEventType(state.eventType),
+      headingAngleZ: state.headingAngleZ,
+      isStuck: state.isStuck ?? false,
+      stuckRelDeg: state.stuckRelDeg,
+      navigation: state.navigation ?? { status: "idle" },
+      ui: state.ui ?? { menuOpen: false, consoleOpen: false },
+      menu: state.menu,
     },
     timestamp: Date.now()
   };

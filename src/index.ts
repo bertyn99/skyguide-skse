@@ -1,11 +1,16 @@
 import { once, on, printConsole, hooks, findConsoleCommand, Debug, Utility } from "./skyrimPlatform";
 import { registerAllEvents } from "./events";
+import { itemEventHandlers, hasPendingItemEvent } from "./game-state/collectors/item-events";
 import { startPolling } from "./actions/polling";
 import { evaluatePriority, shouldSend, recordSentState } from "./arbitration/priority";
 import { serializeState } from "./game-state/serializer";
 import { collectBundle } from "./game-state/collector";
 import { buildModContext } from "./game-state/mod-context";
 import { dumpModContext } from "./communication/file-dump";
+import { initWorldScanner, pumpWorldScanner, getWorldObjects } from "./game-state/collectors/world-scanner";
+import { initLootTracker } from "./world/loot-tracker";
+import { initEffectsTracker } from "./game-state/collectors/effects-tracker";
+import { initAutowalk } from "./world/autowalk";
 import type { EventType } from "./game-state/types";
 import { sendGameState, isConnected } from "./communication/http-client";
 import {
@@ -15,6 +20,15 @@ import {
   isOverlayVisible,
 } from "./bridge";
 import { CONFIG, PLAYER_FORM_ID } from "./config";
+import { logDiag } from "./diag";
+import { isSkyrimAccessInstalled } from "./game-state/skyrim-access";
+import {
+  beginMenuFocusSend,
+  commitMenuFocusSend,
+  hasPendingMenuFocus,
+  peekMenuFocus,
+  pumpMenuFocus,
+} from "./game-state/collectors/menu-focus";
 import { getPlatformVersion } from "./skyrimPlatform";
 
 let lastTickTime = 0;
@@ -58,6 +72,9 @@ function registerSkyguideConsoleCommand(): void {
     );
     printConsole(`  Companion URL: ${CONFIG.companionUrl}`);
     printConsole(`  Mod-context dump: ${CONFIG.modContextDumpEnabled ? CONFIG.modContextPath : "off"}`);
+    printConsole(
+      `  World scanner: ${CONFIG.scannerEnabled ? `on (${getWorldObjects().length} objects cached)` : "off"}`,
+    );
     // Returning false avoids running the original host command implementation.
     return false;
   };
@@ -66,8 +83,23 @@ function registerSkyguideConsoleCommand(): void {
   }
 }
 
-function processAndSend(eventType: EventType, animation = ""): void {
-  const bundle = collectBundle(animation, eventType);
+/**
+ * Embed the parallel-array mod context into the serialized protocol payload
+ * as the additive `context` field (ADR 0003 context lane over HTTP). The
+ * payload is a JSON string; parse/re-stringify only when a context exists.
+ */
+function attachContext(payload: string, modContext: unknown): string {
+  if (modContext === null || modContext === undefined) return payload;
+  try {
+    const obj = JSON.parse(payload) as Record<string, unknown>;
+    obj.context = modContext;
+    return JSON.stringify(obj);
+  } catch {
+    return payload;
+  }
+}
+
+function processAndSend(eventType: EventType, animation = ""): void {  const bundle = collectBundle(animation, eventType);
   if (!bundle) {
     if (CONFIG.debugMode) {
       printConsole("[SkyGuide] collectBundle returned null; skip send");
@@ -75,10 +107,18 @@ function processAndSend(eventType: EventType, animation = ""): void {
     return;
   }
 
+  // Mod-context dump: file lane when Node fs allows it (disabled in the SP
+  // runtime), ALWAYS attached to the POST as the additive `context` field —
+  // the app's connector falls back to it when the file never appears.
   const state = bundle.protocol;
-
+  let modContext: unknown = null;
   try {
-    dumpModContext(buildModContext(bundle.snapshot, state));
+    modContext = buildModContext(
+      bundle.snapshot,
+      state,
+      { skyrimAccessInstalled: isSkyrimAccessInstalled() },
+    );
+    dumpModContext(modContext);
   } catch (err) {
     if (CONFIG.debugMode) {
       printConsole(`[SkyGuide] mod-context dump threw: ${String(err)}`);
@@ -90,14 +130,25 @@ function processAndSend(eventType: EventType, animation = ""): void {
   }
 
   const priority = evaluatePriority(state);
-  if (!shouldSend(priority, state)) {
+  const menuEvent = state.menu?.event;
+  // Item-action events have no commit semantics (fire-and-forget) — only a
+  // real staged menu-focus event enters the pending/inFlight handshake.
+  const stagedMenuFocus = peekMenuFocus() !== undefined;
+  const menuPosted = Boolean(menuEvent) && stagedMenuFocus;
+  if (!menuEvent && !shouldSend(priority, state)) {
     return;
   }
 
-  const payload = serializeState(state, priority);
+  const payload = attachContext(serializeState(state, priority), modContext);
+  if (menuPosted) {
+    beginMenuFocusSend();
+  }
 
   sendGameState(payload)
     .then((sent) => {
+      if (menuPosted) {
+        commitMenuFocusSend(sent);
+      }
       if (sent) {
         recordSentState(state);
         if (CONFIG.debugMode) {
@@ -106,6 +157,9 @@ function processAndSend(eventType: EventType, animation = ""): void {
       }
     })
     .catch((err: unknown) => {
+      if (menuPosted) {
+        commitMenuFocusSend(false);
+      }
       const msg = err instanceof Error ? err.message : String(err);
       if (CONFIG.debugMode) {
         printConsole(`[SkyGuide] Failed to send game state: ${msg}`);
@@ -149,11 +203,22 @@ function init() {
   if (isLoaded) return;
 
   printConsole("SkyGuide plugin loaded!");
+  logDiag(
+    `[SkyGuide] plugin init — dump=${CONFIG.modContextDumpEnabled ? CONFIG.modContextPath : "off"} server=${CONFIG.serverUrl} menuNarration=${CONFIG.menuNarrationEnabled} autowalk=${CONFIG.autowalkEnabled}`,
+  );
 
-  applyGameQolSettings();
+  // Game settings can only be touched once a game world exists — calling this
+  // at the main menu throws. See the once("update") hook below.
+  once("update", () => {
+    applyGameQolSettings();
+  });
 
-  registerAllEvents();
+  registerAllEvents({ ...itemEventHandlers() });
   eventsRegistered = true;
+  initWorldScanner();
+  initLootTracker();
+  initEffectsTracker();
+  initAutowalk();
   startPolling();
   pollingStarted = CONFIG.pollingEnabled;
 
@@ -204,17 +269,50 @@ function init() {
   isLoaded = true;
 }
 
+// Skyrim Platform only emits "update" once a game world exists (JsTick passes
+// gameFunctionsAvailable=false at the main menu, where only "tick" fires).
+// Initialize on whichever arrives first so the console command and the
+// mod-context dump exist before the player loads a save.
+once("tick", () => {
+  init();
+});
+
 once("update", () => {
   init();
 });
 
 on("update", () => {
   const now = Date.now();
-  if (now - lastTickTime < CONFIG.tickInterval) {
+
+  try {
+    pumpMenuFocus(now);
+  } catch (err) {
+    if (CONFIG.debugMode) {
+      printConsole(`[SkyGuide] menu focus pump threw: ${String(err)}`);
+    }
+  }
+
+  const menuDue = (hasPendingMenuFocus() || hasPendingItemEvent()) && isConnected();
+  const fullTick = now - lastTickTime >= CONFIG.tickInterval;
+  if (!fullTick && !menuDue) {
     return;
   }
 
-  lastTickTime = now;
+  if (fullTick) {
+    lastTickTime = now;
+  }
+
+  // Budgeted world-scanner pass — skip on menu-only sends so arrowing a
+  // list does not hitch the game thread with a cell sweep.
+  if (fullTick) {
+    try {
+      pumpWorldScanner();
+    } catch (err) {
+      if (CONFIG.debugMode) {
+        printConsole(`[SkyGuide] world scanner pump threw: ${String(err)}`);
+      }
+    }
+  }
 
   const animation = playerAnimation;
   playerAnimation = "";

@@ -4,12 +4,16 @@ import {
   FormType,
   Game,
   Input,
+  ObjectReference,
   Ui,
   printConsole,
 } from "../skyrimPlatform";
 import { CONFIG, PLAYER_FORM_ID } from "../config";
 import type { ActionCommand } from "./types";
 import { setGameTimeout } from "../timers";
+import { getWorldObjects, invalidateWorldScan } from "../game-state/collectors/world-scanner";
+import { requestAutowalk, cancelAutowalk } from "../world/autowalk";
+import type { PapyrusObject } from "../skyrimPlatform";
 
 type FormLike = {
   isDeleted?: () => boolean;
@@ -213,6 +217,26 @@ export function executeAction(action: ActionCommand): boolean {
     }
 
     case "activate": {
+      if ("formId" in action) {
+        // W4 formId targeting: the LLM may only activate objects the scanner
+        // actually saw (cache = allowlisted types, distance-capped, fresh).
+        // Cache presence doubles as the distance sanity check.
+        const inCache = getWorldObjects().some((object) => object.formId === action.formId);
+        if (!inCache) {
+          logDebug(`Activate blocked: formId ${action.formId} not in scanner cache`);
+          return false;
+        }
+        const form = Game.getFormEx(action.formId);
+        const ref = ObjectReference.from(form as PapyrusObject | null);
+        if (!isValidReference(ref)) {
+          logDebug(`Activate blocked: formId ${action.formId} invalid/deleted/disabled`);
+          return false;
+        }
+        return executeSafely(action.type, () => {
+          ref.activate(player);
+        });
+      }
+
       const { x, y, z } = getPlayerPosition(player);
 
       if (action.target === "crosshair") {
@@ -322,6 +346,29 @@ export function executeAction(action: ActionCommand): boolean {
     case "notification": {
       return executeSafely(action.type, () => {
         Debug.notification(action.message);
+      });
+    }
+
+    case "scan": {
+      // Drop the scanner cache; the next update tick re-sweeps within its
+      // probe budget. Safe from menus — no game refs are touched here.
+      return executeSafely(action.type, () => {
+        invalidateWorldScan();
+      });
+    }
+
+    case "autowalkTo": {
+      // W6: scanner-cache validation + ESP handshake live in world/autowalk.
+      // Fails cleanly (status "failed") when SkyGuide.esp is absent.
+      return executeSafely(action.type, () => {
+        const ok = requestAutowalk({ formId: action.formId, stopDistance: action.stopDistance ?? CONFIG.autowalkStopDistance });
+        if (!ok) throw new Error("autowalk request rejected");
+      });
+    }
+
+    case "autowalkCancel": {
+      return executeSafely(action.type, () => {
+        cancelAutowalk("cancelled");
       });
     }
 
